@@ -1,0 +1,18 @@
+.vscode
+Assets/Scenes
+/My Project.slnx
+Assets/Settings
+Assets/TutorialInfo
+Assets/InputSystem_Actions.inputactions
+Assets/PlayerInput.inputactions
+Assembly-CSharp-Editor.csproj
+Assembly-CSharp.csproj
+Library/
+Assets/*.meta
+Assets/*.asset
+Assets/*.unity
+Logs/
+Packages/
+ProjectSettings/
+Temp/
+UserSettings/
