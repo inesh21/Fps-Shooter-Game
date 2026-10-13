@@ -2,32 +2,39 @@ using UnityEngine;
 
 public class CameraFollow : MonoBehaviour
 {
-    [SerializeField] private Transform target;
-    [SerializeField] private float smoothSpeed = 5f;
-    [SerializeField] private Vector3 offset = new Vector3(0, 6, -8);
-    [SerializeField] private float rotationSpeed = 0.1f;
-    [SerializeField] private float minDistance = 2f;
+    [SerializeField] private PlayerFSM player;
+    [SerializeField] private Vector3 offset = new Vector3(0, 2f, -5f);
+    [SerializeField] private float sensitivity = 0.1f;
+    [SerializeField] private float pitchMin = -20f;
+    [SerializeField] private float pitchMax = 80f;
 
-    private Vector3 currentVelocity;
+    private float yaw;
+    private float pitch;
+
+    private void Start()
+    {
+        // Lock cursor to the game window so the mouse doesn't leave the screen
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
 
     private void LateUpdate()
     {
-        if (target == null) return;
+        if (player == null || player.Actions == null) return;
 
-        // Calculate desired position
-        Vector3 desiredPosition = target.position + offset;
+        // 1. Read the Look action vector (Delta [Mouse])
+        Vector2 lookInput = player.Actions.Player.Look.ReadValue<Vector2>();
 
-        // Use SmoothDamp for better, framerate-independent smoothing
-        transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref currentVelocity, 1f / smoothSpeed);
+        // 2. Accumulate rotation
+        yaw += lookInput.x * sensitivity;
+        pitch -= lookInput.y * sensitivity;
+        pitch = Mathf.Clamp(pitch, pitchMin, pitchMax);
 
-        // Smooth rotation towards target
-        Vector3 lookTarget = target.position + Vector3.up * 1.5f;
-        Vector3 direction = lookTarget - transform.position;
+        // 3. Position and rotate camera around player
+        Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
+        Vector3 targetPosition = player.transform.position + Vector3.up * offset.y;
 
-        if (direction.magnitude > minDistance)
-        {
-            Quaternion targetRotation = Quaternion.LookRotation(direction);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
-        }
+        transform.position = targetPosition + (rotation * new Vector3(0, 0, offset.z));
+        transform.LookAt(targetPosition);
     }
 }
