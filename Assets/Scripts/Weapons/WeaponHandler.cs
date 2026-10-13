@@ -88,11 +88,28 @@ public class WeaponHandler : MonoBehaviour
     {
         currentAmmo--;
 
+        // 1. Raycast for instant damage detection (Hitscan)
         Ray ray = Camera.main.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        Vector3 targetPoint;
+
         if (Physics.Raycast(ray, out RaycastHit hit, currentWeapon.range, currentWeapon.hitLayers))
         {
+            targetPoint = hit.point;
             Debug.Log($"Hit {hit.collider.name} for {currentWeapon.damage} damage!");
-            Debug.DrawLine(ray.origin, hit.point, Color.red, 0.5f);
+        }
+        else
+        {
+            // If nothing was hit, trace to maximum range
+            targetPoint = ray.GetPoint(currentWeapon.range);
+        }
+
+        // 2. Spawn Pooled Tracer for visual trajectory
+        Vector3 spawnPosition = firePoint != null ? firePoint.position : ray.origin;
+        GameObject tracerObj = ObjectPooler.Instance.SpawnFromPool("Tracer", spawnPosition, Quaternion.identity);
+
+        if (tracerObj != null && tracerObj.TryGetComponent(out BulletTracer tracer))
+        {
+            tracer.Init(spawnPosition, targetPoint);
         }
     }
 
