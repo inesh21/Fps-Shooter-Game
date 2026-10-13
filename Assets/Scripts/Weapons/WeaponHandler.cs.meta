@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 0440ecffcf81c3e47a873ff0c0f0dd51
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - currentWeapon: {fileID: 11400000, guid: e89526792eef09f49a9978aea13649b8, type: 2}
+  - firePoint: {instanceID: 0}
+  - player: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
