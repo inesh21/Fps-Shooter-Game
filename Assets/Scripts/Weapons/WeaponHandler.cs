@@ -8,6 +8,7 @@ public class WeaponHandler : MonoBehaviour
     [SerializeField] private WeaponData currentWeapon;
     [SerializeField] private Transform firePoint;
     [SerializeField] private PlayerFSM player;
+    [SerializeField] private RecoilSpring recoilSpring;
 
     private int currentAmmo;
     private bool isReloading;
@@ -87,9 +88,31 @@ public class WeaponHandler : MonoBehaviour
     private void Shoot()
     {
         currentAmmo--;
+        if (recoilSpring != null && currentWeapon != null)
+        {
+            recoilSpring.ApplyRecoil(currentWeapon.recoilRotation, currentWeapon.recoilKickback);
+        }
+        else
+        {
+            Debug.LogWarning("RecoilSpring or CurrentWeapon is missing!");
+        }
 
-        // 1. Raycast for instant damage detection (Hitscan)
-        Ray ray = Camera.main.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        // 1. Raycast from FirePoint instead of camera center
+        Vector3 shootOrigin = firePoint != null ? firePoint.position : Camera.main.transform.position;
+        Vector3 shootDirection = Camera.main.transform.forward;
+
+        // Add slight random spread
+        if (currentWeapon != null)
+        {
+            shootDirection += new Vector3(
+                Random.Range(-currentWeapon.baseSpread, currentWeapon.baseSpread),
+                Random.Range(-currentWeapon.baseSpread, currentWeapon.baseSpread),
+                0
+            ) * 0.01f;
+            shootDirection.Normalize();
+        }
+
+        Ray ray = new Ray(shootOrigin, shootDirection);
         Vector3 targetPoint;
 
         if (Physics.Raycast(ray, out RaycastHit hit, currentWeapon.range, currentWeapon.hitLayers))
@@ -103,13 +126,19 @@ public class WeaponHandler : MonoBehaviour
             targetPoint = ray.GetPoint(currentWeapon.range);
         }
 
-        // 2. Spawn Pooled Tracer for visual trajectory
-        Vector3 spawnPosition = firePoint != null ? firePoint.position : ray.origin;
-        GameObject tracerObj = ObjectPooler.Instance.SpawnFromPool("Tracer", spawnPosition, Quaternion.identity);
-
-        if (tracerObj != null && tracerObj.TryGetComponent(out BulletTracer tracer))
+        // 2. Spawn Pooled Tracer from FirePoint
+        if (ObjectPooler.Instance != null)
         {
-            tracer.Init(spawnPosition, targetPoint);
+            GameObject tracerObj = ObjectPooler.Instance.SpawnFromPool("Tracer", shootOrigin, Quaternion.identity);
+
+            if (tracerObj != null && tracerObj.TryGetComponent(out BulletTracer tracer))
+            {
+                tracer.Init(shootOrigin, targetPoint);
+            }
+        }
+        else
+        {
+            Debug.LogWarning("ObjectPooler.Instance is null! Make sure ObjectPooler exists in the scene.");
         }
     }
 

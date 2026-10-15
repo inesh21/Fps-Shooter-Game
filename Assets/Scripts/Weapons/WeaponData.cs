@@ -6,6 +6,9 @@ public class WeaponData : ScriptableObject
     [Header("General Info")]
     public string weaponName = "New Weapon";
     public GameObject weaponPrefab;
+    [Header("Spring Recoil Profile")]
+    public Vector3 recoilRotation = new Vector3(4f, 1.5f, 1f); // Degrees
+    public Vector3 recoilKickback = new Vector3(0.02f, 0.02f, 0.1f); // Meters
 
     [Header("Shooting Properties")]
     public bool isAutomatic = true;

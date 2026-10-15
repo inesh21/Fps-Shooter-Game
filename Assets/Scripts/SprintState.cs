@@ -16,8 +16,24 @@ public class SprintState : BaseState
             return;
         }
 
-        Vector3 move = player.transform.right * input.x + player.transform.forward * input.y;
-        player.Controller.Move(move * player.sprintSpeed * Time.deltaTime);
+        // Use camera-relative movement like WalkState
+        Vector3 cameraForward = Camera.main.transform.forward;
+        Vector3 cameraRight = Camera.main.transform.right;
+
+        cameraForward.y = 0f;
+        cameraRight.y = 0f;
+        cameraForward.Normalize();
+        cameraRight.Normalize();
+
+        Vector3 moveDirection = (cameraForward * input.y) + (cameraRight * input.x);
+        player.Controller.Move(moveDirection * player.sprintSpeed * Time.deltaTime);
+
+        // Rotate character to face movement direction
+        if (moveDirection != Vector3.zero)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+            player.transform.rotation = Quaternion.Slerp(player.transform.rotation, targetRotation, 10f * Time.deltaTime);
+        }
     }
 
     public override void ExitState() { }

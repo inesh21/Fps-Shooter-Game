@@ -5,10 +5,11 @@ using UnityEngine.InputSystem;
 public class PlayerFSM : MonoBehaviour
 {
     [Header("Movement Settings")]
-    public float walkSpeed = 5f;
-    public float sprintSpeed = 9f;
-    public float jumpHeight = 1.2f;
-    public float gravity = -19.62f;
+    public float walkSpeed = 6f;
+    public float sprintSpeed = 12f;
+    public float jumpHeight = 2f;
+    public float gravity = -25f;
+    public float acceleration = 10f;
 
     [Header("References")]
     public CharacterController Controller { get; set; }
@@ -17,6 +18,7 @@ public class PlayerFSM : MonoBehaviour
     public PlayerInput Actions { get; private set; }
     private Vector3 velocity;
     private bool isGrounded;
+    public Vector3 CurrentVelocity => velocity;
 
     private void Awake()
     {
