@@ -41,12 +41,8 @@ public class WalkState : BaseState
         // 5. Move the CharacterController
         player.Controller.Move(moveDirection * player.walkSpeed * Time.deltaTime);
 
-        // 6. Smoothly rotate character to face the direction of movement
-        if (moveDirection != Vector3.zero)
-        {
-            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
-            player.transform.rotation = Quaternion.Slerp(player.transform.rotation, targetRotation, 10f * Time.deltaTime);
-        }
+        // 6. Rotate player to face camera forward direction (FPS style)
+        player.transform.rotation = Quaternion.Euler(0, Camera.main.transform.eulerAngles.y, 0);
     }
 
     public override void ExitState() { }

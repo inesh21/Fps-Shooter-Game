@@ -10,7 +10,7 @@ public class RecoilSpring : MonoBehaviour
     [SerializeField] private bool applyCameraRecoil = true;
     [SerializeField] private float cameraRecoilMultiplier = 0.8f;
 
-    private CameraRecoil cameraRecoil;
+    private CameraFollow cameraRecoil;
 
     private Vector3 currentRotation;
     private Vector3 targetRotation;
@@ -22,13 +22,13 @@ public class RecoilSpring : MonoBehaviour
 
     private void Start()
     {
-        // Try to find CameraRecoil component on camera
+        // Try to find CameraFollow component (which now has recoil built in)
         if (Camera.main != null)
         {
-            cameraRecoil = Camera.main.GetComponent<CameraRecoil>();
+            cameraRecoil = Camera.main.GetComponent<CameraFollow>();
             if (cameraRecoil == null && applyCameraRecoil)
             {
-                cameraRecoil = Camera.main.gameObject.AddComponent<CameraRecoil>();
+                Debug.LogWarning("CameraFollow not found on Main Camera! Camera recoil will not work.");
             }
         }
     }

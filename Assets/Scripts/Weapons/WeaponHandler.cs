@@ -53,7 +53,24 @@ public class WeaponHandler : MonoBehaviour
         }
     }
 
-    private void OnAttackStarted(InputAction.CallbackContext context) => isShootingPressed = true;
+    private void OnAttackStarted(InputAction.CallbackContext context)
+    {
+        if (!currentWeapon.isAutomatic)
+        {
+            // For semi-auto, shoot once on button down
+            if (currentAmmo > 0 && !isReloading && Time.time - lastFireTime >= currentWeapon.TimeBetweenShots)
+            {
+                Shoot();
+                lastFireTime = Time.time;
+            }
+        }
+        else
+        {
+            // For full-auto, just set the flag
+            isShootingPressed = true;
+        }
+    }
+
     private void OnAttackCanceled(InputAction.CallbackContext context) => isShootingPressed = false;
     private void OnReloadPerformed(InputAction.CallbackContext context) => StartCoroutine(Reload());
 
@@ -64,7 +81,9 @@ public class WeaponHandler : MonoBehaviour
 
     private void HandleShooting()
     {
+        // Only handle automatic fire here, semi-auto is handled in OnAttackStarted
         if (!isShootingPressed || isReloading || currentWeapon == null) return;
+        if (!currentWeapon.isAutomatic) return; // Semi-auto handled in input callback
 
         if (Time.time - lastFireTime >= currentWeapon.TimeBetweenShots)
         {
@@ -72,11 +91,6 @@ public class WeaponHandler : MonoBehaviour
             {
                 Shoot();
                 lastFireTime = Time.time;
-
-                if (!currentWeapon.isAutomatic)
-                {
-                    isShootingPressed = false;
-                }
             }
             else
             {
@@ -88,13 +102,17 @@ public class WeaponHandler : MonoBehaviour
     private void Shoot()
     {
         currentAmmo--;
+
+        Debug.Log($"SHOOTING! Ammo: {currentAmmo}");
+
         if (recoilSpring != null && currentWeapon != null)
         {
+            Debug.Log($"Applying recoil: {currentWeapon.recoilRotation}");
             recoilSpring.ApplyRecoil(currentWeapon.recoilRotation, currentWeapon.recoilKickback);
         }
         else
         {
-            Debug.LogWarning("RecoilSpring or CurrentWeapon is missing!");
+            Debug.LogWarning($"RecoilSpring: {(recoilSpring != null ? "OK" : "MISSING")} | CurrentWeapon: {(currentWeapon != null ? "OK" : "MISSING")}");
         }
 
         // 1. Raycast from FirePoint instead of camera center

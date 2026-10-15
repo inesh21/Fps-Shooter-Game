@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WeaponData
   weaponName: New Weapon
   weaponPrefab: {fileID: 0}
-  recoilRotation: {x: 8.48, y: 4.98, z: 1.82}
+  recoilRotation: {x: 1, y: 2, z: 1}
   recoilKickback: {x: 2.2, y: 1.75, z: 1.56}
   isAutomatic: 1
   fireRate: 600

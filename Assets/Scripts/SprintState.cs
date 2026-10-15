@@ -28,12 +28,8 @@ public class SprintState : BaseState
         Vector3 moveDirection = (cameraForward * input.y) + (cameraRight * input.x);
         player.Controller.Move(moveDirection * player.sprintSpeed * Time.deltaTime);
 
-        // Rotate character to face movement direction
-        if (moveDirection != Vector3.zero)
-        {
-            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
-            player.transform.rotation = Quaternion.Slerp(player.transform.rotation, targetRotation, 10f * Time.deltaTime);
-        }
+        // Rotate player to face camera forward direction (FPS style)
+        player.transform.rotation = Quaternion.Euler(0, Camera.main.transform.eulerAngles.y, 0);
     }
 
     public override void ExitState() { }

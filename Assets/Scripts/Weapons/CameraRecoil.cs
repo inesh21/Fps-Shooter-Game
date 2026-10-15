@@ -24,11 +24,15 @@ public class CameraRecoil : MonoBehaviour
 
     public void AddRecoil(float pitch, float yaw)
     {
+        Debug.Log($"CameraRecoil.AddRecoil called! Pitch: {pitch}, Yaw: {yaw}");
+
         // Add recoil but clamp to prevent extreme angles
         targetRotation.x += pitch;
         targetRotation.y += yaw;
 
         targetRotation.x = Mathf.Clamp(targetRotation.x, -maxRecoilAngle, maxRecoilAngle);
         targetRotation.y = Mathf.Clamp(targetRotation.y, -maxRecoilAngle, maxRecoilAngle);
+
+        Debug.Log($"Target rotation now: {targetRotation}");
     }
 }
