@@ -40,9 +40,6 @@ public class WalkState : BaseState
 
         // 5. Move the CharacterController
         player.Controller.Move(moveDirection * player.walkSpeed * Time.deltaTime);
-
-        // 6. Rotate player to face camera forward direction (FPS style)
-        player.transform.rotation = Quaternion.Euler(0, Camera.main.transform.eulerAngles.y, 0);
     }
 
     public override void ExitState() { }

@@ -6,9 +6,9 @@ public class WeaponSwayAndBob : MonoBehaviour
     [SerializeField] private PlayerFSM player;
 
     [Header("Sway Settings")]
-    [SerializeField] private float swayAmount = 2f;
-    [SerializeField] private float maxSwayAmount = 5f;
-    [SerializeField] private float swaySmoothness = 6f;
+    [SerializeField] private float swayAmount = 0.5f;
+    [SerializeField] private float maxSwayAmount = 2f;
+    [SerializeField] private float swaySmoothness = 8f;
 
     [Header("Bobbing Settings")]
     [SerializeField] private float walkBobFrequency = 10f;

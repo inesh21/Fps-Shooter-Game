@@ -3,8 +3,8 @@ using UnityEngine;
 public class CameraFollow : MonoBehaviour
 {
     [SerializeField] private PlayerFSM player;
-    [SerializeField] private Vector3 offset = new Vector3(0, 2f, -5f);
-    [SerializeField] private float sensitivity = 0.1f;
+    [SerializeField] private Vector3 offset = new Vector3(0, 0.73f, 0);
+    [SerializeField] private float sensitivity = 2f;
     [SerializeField] private float pitchMin = -20f;
     [SerializeField] private float pitchMax = 80f;
 
@@ -19,48 +19,63 @@ public class CameraFollow : MonoBehaviour
 
     private void Start()
     {
-        // Lock cursor to the game window so the mouse doesn't leave the screen
+        // Lock cursor to the game window
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+
+        // Initialize rotation to match current camera rotation
+        Vector3 currentRotation = transform.localEulerAngles;
+        yaw = currentRotation.y;
+        pitch = currentRotation.x;
+
+        Debug.Log("CameraFollow started!");
     }
 
     private void LateUpdate()
     {
-        if (player == null || player.Actions == null) return;
+        if (player == null || player.Actions == null)
+        {
+            Debug.LogWarning("Player or Actions is null!");
+            return;
+        }
 
-        // 1. Read the Look action vector (Delta [Mouse])
+        // Read mouse input
         Vector2 lookInput = player.Actions.Player.Look.ReadValue<Vector2>();
 
-        // 2. Accumulate rotation
+        // Debug to see if we're getting input
+        if (lookInput.magnitude > 0.01f)
+        {
+            Debug.Log($"Mouse input: {lookInput}");
+        }
+
+        // Accumulate rotation
         yaw += lookInput.x * sensitivity;
         pitch -= lookInput.y * sensitivity;
         pitch = Mathf.Clamp(pitch, pitchMin, pitchMax);
 
-        // 3. Smoothly recover from recoil
+        // Smoothly recover from recoil
         recoilPitch = Mathf.Lerp(recoilPitch, 0f, recoilReturnSpeed * Time.deltaTime);
         recoilYaw = Mathf.Lerp(recoilYaw, 0f, recoilReturnSpeed * Time.deltaTime);
 
-        // 4. Apply base rotation + recoil
+        // Apply base rotation + recoil
         float finalPitch = pitch + recoilPitch;
         float finalYaw = yaw + recoilYaw;
 
-        // 5. Position and rotate camera around player
-        Quaternion rotation = Quaternion.Euler(finalPitch, finalYaw, 0f);
-        Vector3 targetPosition = player.transform.position + Vector3.up * offset.y;
+        // Apply rotation to camera
+        transform.localRotation = Quaternion.Euler(finalPitch, finalYaw, 0f);
 
-        transform.position = targetPosition + (rotation * new Vector3(0, 0, offset.z));
-        transform.LookAt(targetPosition);
+        // Apply rotation to player body (horizontal only)
+        if (player != null)
+        {
+            player.transform.rotation = Quaternion.Euler(0, finalYaw, 0);
+        }
     }
 
-    /// <summary>
-    /// Add camera recoil kick
-    /// </summary>
     public void AddRecoil(float kickPitch, float kickYaw)
     {
         recoilPitch += kickPitch;
         recoilYaw += kickYaw;
 
-        // Clamp to prevent extreme angles
         recoilPitch = Mathf.Clamp(recoilPitch, -maxRecoilAngle, maxRecoilAngle);
         recoilYaw = Mathf.Clamp(recoilYaw, -maxRecoilAngle, maxRecoilAngle);
     }

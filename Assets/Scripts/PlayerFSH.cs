@@ -44,6 +44,22 @@ public class PlayerFSM : MonoBehaviour
 
     private void Start()
     {
+        // Temporarily disable controller to override position cleanly
+        if (Controller != null)
+        {
+            Controller.enabled = false;
+        }
+
+        // Set your desired spawn position (e.g., ground level)
+        transform.position = new Vector3(0f, 1f, 0f);
+        transform.rotation = Quaternion.identity;
+
+        // Re-enable controller after position is set
+        if (Controller != null)
+        {
+            Controller.enabled = true;
+        }
+
         // Start in Idle state
         SwitchState(new IdleState(this));
     }
@@ -54,17 +70,20 @@ public class PlayerFSM : MonoBehaviour
         if (Controller == null)
             Controller = GetComponent<CharacterController>();
         isGrounded = Controller.isGrounded;
+
         if (isGrounded && velocity.y < 0)
         {
-            velocity.y = -2f; // Downward force to stay grounded
+            velocity.y = -2f; // Slight downward force to keep grounded
         }
 
-        // 4. Run active state update logic (Handles WASD movement)
+        // Run active state update logic (Handles WASD movement)
         currentState?.UpdateState();
 
         // Apply Gravity & Vertical Movement
         velocity.y += gravity * Time.deltaTime;
         Controller.Move(velocity * Time.deltaTime);
+
+        // Player rotation is now handled by CameraFollow script
     }
 
     public void SwitchState(BaseState newState)
