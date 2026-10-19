@@ -1,82 +1,60 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
-public class CameraFollow : MonoBehaviour
+public sealed class CameraFollow : MonoBehaviour
 {
     [SerializeField] private PlayerFSM player;
-    [SerializeField] private Vector3 offset = new Vector3(0, 0.73f, 0);
-    [SerializeField] private float sensitivity = 2f;
-    [SerializeField] private float pitchMin = -20f;
-    [SerializeField] private float pitchMax = 80f;
-
-    [Header("Recoil Settings")]
-    [SerializeField] private float recoilReturnSpeed = 8f;
-    [SerializeField] private float maxRecoilAngle = 15f;
+    [SerializeField, Min(0f)] private float sensitivity = 0.08f;
+    [SerializeField] private float minimumPitch = -85f;
+    [SerializeField] private float maximumPitch = 85f;
+    [SerializeField, Min(0f)] private float recoilRecovery = 10f;
+    [SerializeField, Min(0f)] private float maximumRecoil = 15f;
 
     private float yaw;
     private float pitch;
-    private float recoilPitch;
-    private float recoilYaw;
+    private Vector2 recoil;
 
-    private void Start()
+    private void Awake()
     {
-        // Lock cursor to the game window
+        if (player == null) player = GetComponentInParent<PlayerFSM>();
+        yaw = player != null ? player.transform.eulerAngles.y : transform.eulerAngles.y;
+        pitch = NormalizeAngle(transform.localEulerAngles.x);
+    }
+
+    private void OnEnable()
+    {
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
-
-        // Initialize rotation to match current camera rotation
-        Vector3 currentRotation = transform.localEulerAngles;
-        yaw = currentRotation.y;
-        pitch = currentRotation.x;
-
-        Debug.Log("CameraFollow started!");
     }
 
     private void LateUpdate()
     {
-        if (player == null || player.Actions == null)
+        if (player == null || player.Actions == null) return;
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
         {
-            Debug.LogWarning("Player or Actions is null!");
-            return;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
         }
 
-        // Read mouse input
-        Vector2 lookInput = player.Actions.Player.Look.ReadValue<Vector2>();
+        Vector2 look = player.Actions.Player.Look.ReadValue<Vector2>();
+        yaw += look.x * sensitivity;
+        pitch = Mathf.Clamp(pitch - look.y * sensitivity, minimumPitch, maximumPitch);
+        recoil = Vector2.Lerp(recoil, Vector2.zero, 1f - Mathf.Exp(-recoilRecovery * Time.deltaTime));
 
-        // Debug to see if we're getting input
-        if (lookInput.magnitude > 0.01f)
-        {
-            Debug.Log($"Mouse input: {lookInput}");
-        }
-
-        // Accumulate rotation
-        yaw += lookInput.x * sensitivity;
-        pitch -= lookInput.y * sensitivity;
-        pitch = Mathf.Clamp(pitch, pitchMin, pitchMax);
-
-        // Smoothly recover from recoil
-        recoilPitch = Mathf.Lerp(recoilPitch, 0f, recoilReturnSpeed * Time.deltaTime);
-        recoilYaw = Mathf.Lerp(recoilYaw, 0f, recoilReturnSpeed * Time.deltaTime);
-
-        // Apply base rotation + recoil
-        float finalPitch = pitch + recoilPitch;
-        float finalYaw = yaw + recoilYaw;
-
-        // Apply rotation to camera
-        transform.localRotation = Quaternion.Euler(finalPitch, finalYaw, 0f);
-
-        // Apply rotation to player body (horizontal only)
-        if (player != null)
-        {
-            player.transform.rotation = Quaternion.Euler(0, finalYaw, 0);
-        }
+        player.transform.rotation = Quaternion.Euler(0f, yaw + recoil.y, 0f);
+        transform.localRotation = Quaternion.Euler(pitch + recoil.x, 0f, 0f);
     }
 
-    public void AddRecoil(float kickPitch, float kickYaw)
+    public void AddRecoil(float pitchKick, float yawKick)
     {
-        recoilPitch += kickPitch;
-        recoilYaw += kickYaw;
-
-        recoilPitch = Mathf.Clamp(recoilPitch, -maxRecoilAngle, maxRecoilAngle);
-        recoilYaw = Mathf.Clamp(recoilYaw, -maxRecoilAngle, maxRecoilAngle);
+        recoil.x = Mathf.Clamp(recoil.x + pitchKick, -maximumRecoil, maximumRecoil);
+        recoil.y = Mathf.Clamp(recoil.y + yawKick, -maximumRecoil, maximumRecoil);
     }
+
+    private static float NormalizeAngle(float angle) => angle > 180f ? angle - 360f : angle;
 }

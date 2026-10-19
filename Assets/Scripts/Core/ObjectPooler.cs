@@ -1,64 +1,90 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ObjectPooler : MonoBehaviour
+public sealed class ObjectPooler : MonoBehaviour
 {
-    public static ObjectPooler Instance;
+    public static ObjectPooler Instance { get; private set; }
 
     [System.Serializable]
-    public class Pool
+    public sealed class Pool
     {
         public string tag;
         public GameObject prefab;
-        public int size = 20;
+        [Min(0)] public int size = 20;
     }
 
-    public List<Pool> pools;
-    public Dictionary<string, Queue<GameObject>> poolDictionary;
+    [SerializeField] private List<Pool> pools = new List<Pool>();
+    private readonly Dictionary<string, Queue<GameObject>> available = new Dictionary<string, Queue<GameObject>>();
+    private readonly Dictionary<GameObject, string> poolByObject = new Dictionary<GameObject, string>();
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Debug.LogError("Only one ObjectPooler may be active in a scene.", this);
+            enabled = false;
+            return;
+        }
         Instance = this;
-        InitializePools();
+        BuildPools();
     }
 
-    private void InitializePools()
+    private void OnDestroy()
     {
-        poolDictionary = new Dictionary<string, Queue<GameObject>>();
+        if (Instance == this) Instance = null;
+    }
 
-        foreach (Pool pool in pools)
+    private void BuildPools()
+    {
+        foreach (Pool config in pools)
         {
-            Queue<GameObject> objectPool = new Queue<GameObject>();
-
-            for (int i = 0; i < pool.size; i++)
+            if (config == null || string.IsNullOrWhiteSpace(config.tag) || config.prefab == null || config.size < 0)
             {
-                GameObject obj = Instantiate(pool.prefab);
-                obj.SetActive(false);
-                obj.transform.SetParent(transform);
-                objectPool.Enqueue(obj);
+                Debug.LogWarning("Skipping an invalid pool configuration.", this);
+                continue;
+            }
+            if (available.ContainsKey(config.tag))
+            {
+                Debug.LogWarning($"Pool tag '{config.tag}' is duplicated.", this);
+                continue;
             }
 
-            poolDictionary.Add(pool.tag, objectPool);
+            Queue<GameObject> queue = new Queue<GameObject>();
+            available.Add(config.tag, queue);
+            for (int i = 0; i < config.size; i++)
+            {
+                GameObject instance = Instantiate(config.prefab, transform);
+                instance.SetActive(false);
+                poolByObject.Add(instance, config.tag);
+                queue.Enqueue(instance);
+            }
         }
     }
 
     public GameObject SpawnFromPool(string tag, Vector3 position, Quaternion rotation)
     {
-        if (!poolDictionary.ContainsKey(tag))
+        if (!available.TryGetValue(tag, out Queue<GameObject> queue))
         {
-            Debug.LogWarning($"Pool with tag {tag} doesn't exist.");
+            Debug.LogWarning($"No object pool is configured for '{tag}'.", this);
             return null;
         }
+        while (queue.Count > 0)
+        {
+            GameObject item = queue.Dequeue();
+            if (item == null) continue;
+            item.transform.SetParent(null, true);
+            item.transform.SetPositionAndRotation(position, rotation);
+            item.SetActive(true);
+            return item;
+        }
+        return null;
+    }
 
-        GameObject objectToSpawn = poolDictionary[tag].Dequeue();
-
-        objectToSpawn.SetActive(true);
-        objectToSpawn.transform.position = position;
-        objectToSpawn.transform.rotation = rotation;
-
-        poolDictionary[tag].Enqueue(objectToSpawn);
-
-        return objectToSpawn;
+    public void ReturnToPool(GameObject item)
+    {
+        if (item == null || !poolByObject.TryGetValue(item, out string tag)) return;
+        item.SetActive(false);
+        item.transform.SetParent(transform, false);
+        available[tag].Enqueue(item);
     }
 }

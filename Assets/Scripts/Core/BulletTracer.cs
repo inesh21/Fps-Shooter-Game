@@ -1,28 +1,34 @@
-using System.Collections;
 using UnityEngine;
 
-public class BulletTracer : MonoBehaviour
+public sealed class BulletTracer : MonoBehaviour
 {
-    [SerializeField] private float speed = 100f;
-    private Vector3 targetPosition;
+    [SerializeField, Min(0.1f)] private float speed = 100f;
+    private Vector3 destination;
+    private bool travelling;
 
     public void Init(Vector3 start, Vector3 target)
     {
         transform.position = start;
-        targetPosition = target;
-        StopAllCoroutines();
-        StartCoroutine(MoveToTarget());
+        destination = target;
+        travelling = (target - start).sqrMagnitude > 0.0001f;
+        if (!travelling) Return();
     }
 
-    private IEnumerator MoveToTarget()
+    private void Update()
     {
-        while (Vector3.Distance(transform.position, targetPosition) > 0.1f)
+        if (!travelling) return;
+        transform.position = Vector3.MoveTowards(transform.position, destination, speed * Time.deltaTime);
+        if ((transform.position - destination).sqrMagnitude <= 0.0001f)
         {
-            transform.position = Vector3.MoveTowards(transform.position, targetPosition, speed * Time.deltaTime);
-            yield return null;
+            transform.position = destination;
+            Return();
         }
+    }
 
-        transform.position = targetPosition;
-        gameObject.SetActive(false); // Return to object pool
+    private void Return()
+    {
+        travelling = false;
+        if (ObjectPooler.Instance != null) ObjectPooler.Instance.ReturnToPool(gameObject);
+        else gameObject.SetActive(false);
     }
 }

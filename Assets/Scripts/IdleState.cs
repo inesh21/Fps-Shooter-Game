@@ -1,21 +1,17 @@
 using UnityEngine;
 
-public class IdleState : BaseState
+public sealed class IdleState : BaseState
 {
     public IdleState(PlayerFSM player) : base(player) { }
 
-    public override void EnterState() { }
-
     public override void UpdateState()
     {
-        Vector2 input = player.Actions.Player.Move.ReadValue<Vector2>();
-        
-        // Transition to Walk if moving
-        if (input.sqrMagnitude > 0.01f)
+        Vector2 input = player.ReadMoveInput();
+        if (input.sqrMagnitude <= 0.01f)
         {
-            player.SwitchState(new WalkState(player));
+            player.MoveHorizontally(Vector2.zero, 0f);
+            return;
         }
+        player.ChangeState(player.SprintHeld ? new SprintState(player) : new WalkState(player));
     }
-
-    public override void ExitState() { }
 }

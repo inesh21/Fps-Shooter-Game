@@ -1,94 +1,51 @@
 using UnityEngine;
 
-public class WeaponSwayAndBob : MonoBehaviour
+public sealed class WeaponSwayAndBob : MonoBehaviour
 {
-    [Header("References")]
     [SerializeField] private PlayerFSM player;
+    [Header("Sway")]
+    [SerializeField, Min(0f)] private float swayScale = 0.015f;
+    [SerializeField, Min(0f)] private float maximumSway = 3f;
+    [SerializeField, Min(0f)] private float swaySharpness = 12f;
+    [Header("Bobbing")]
+    [SerializeField, Min(0f)] private float bobFrequency = 9f;
+    [SerializeField, Min(0f)] private float bobAmplitude = 0.025f;
+    [SerializeField, Min(1f)] private float sprintMultiplier = 1.5f;
 
-    [Header("Sway Settings")]
-    [SerializeField] private float swayAmount = 0.5f;
-    [SerializeField] private float maxSwayAmount = 2f;
-    [SerializeField] private float swaySmoothness = 8f;
+    private Vector3 basePosition;
+    private Quaternion baseRotation;
+    private float phase;
 
-    [Header("Bobbing Settings")]
-    [SerializeField] private float walkBobFrequency = 10f;
-    [SerializeField] private float walkBobHorizontalAmplitude = 0.05f;
-    [SerializeField] private float walkBobVerticalAmplitude = 0.05f;
-    
-    [SerializeField] private float sprintBobMultiplier = 1.5f;
-    [SerializeField] private float bobSmoothness = 10f;
-
-    private Vector3 initialPosition;
-    private Quaternion initialRotation;
-    private float bobTimer;
-
-    private void Start()
+    private void Awake()
     {
         if (player == null) player = GetComponentInParent<PlayerFSM>();
-
-        initialPosition = transform.localPosition;
-        initialRotation = transform.localRotation;
+        basePosition = transform.localPosition;
+        baseRotation = transform.localRotation;
     }
 
-    private void Update()
+    private void LateUpdate()
     {
-        if (player == null || player.Actions == null) return;
+        if (player == null || player.Actions == null || player.Controller == null) return;
+        Vector2 look = player.Actions.Player.Look.ReadValue<Vector2>();
+        Vector3 velocity = player.CurrentVelocity;
+        velocity.y = 0f;
+        bool walking = player.IsGrounded && velocity.sqrMagnitude > 0.04f;
+        bool sprinting = walking && player.SprintHeld;
 
-        HandleSway();
-        HandleBobbing();
-    }
-
-    private void HandleSway()
-    {
-        // 1. Read Mouse Look Input
-        Vector2 lookInput = player.Actions.Player.Look.ReadValue<Vector2>();
-
-        // 2. Calculate sway rotations based on mouse delta
-        float pitch = Mathf.Clamp(-lookInput.y * swayAmount, -maxSwayAmount, maxSwayAmount);
-        float yaw = Mathf.Clamp(lookInput.x * swayAmount, -maxSwayAmount, maxSwayAmount);
-
-        Quaternion targetRotation = Quaternion.Euler(pitch, yaw, 0f) * initialRotation;
-
-        // 3. Smoothly interpolate rotation back to origin
-        transform.localRotation = Quaternion.Slerp(transform.localRotation, targetRotation, Time.deltaTime * swaySmoothness);
-    }
-
-    private void HandleBobbing()
-    {
-        // Calculate horizontal movement speed of the character
-        Vector3 playerVelocity = player.Controller.velocity;
-        playerVelocity.y = 0f;
-        float speed = playerVelocity.magnitude;
-
-        Vector3 targetBobPosition = initialPosition;
-
-        if (speed > 0.1f && player.Controller.isGrounded)
+        Vector3 bob = Vector3.zero;
+        if (walking)
         {
-            // Determine if player is sprinting to scale frequency
-            bool isSprinting = speed > player.walkSpeed + 0.5f;
-            float currentFrequency = isSprinting ? walkBobFrequency * sprintBobMultiplier : walkBobFrequency;
-
-            bobTimer += Time.deltaTime * currentFrequency;
-
-            // Lissajous curve math for realistic figure-8 weapon motion
-            float horizontalOffset = Mathf.Cos(bobTimer * 0.5f) * walkBobHorizontalAmplitude;
-            float verticalOffset = Mathf.Sin(bobTimer) * walkBobVerticalAmplitude;
-
-            if (isSprinting)
-            {
-                horizontalOffset *= 1.5f;
-                verticalOffset *= 1.5f;
-            }
-
-            targetBobPosition = initialPosition + new Vector3(horizontalOffset, verticalOffset, 0f);
+            phase += Time.deltaTime * bobFrequency * (sprinting ? sprintMultiplier : 1f);
+            float amount = bobAmplitude * (sprinting ? sprintMultiplier : 1f);
+            bob = new Vector3(Mathf.Cos(phase * 0.5f), Mathf.Sin(phase), 0f) * amount;
         }
-        else
-        {
-            // Reset timer smoothly when idle
-            bobTimer = 0f;
-        }
+        else phase = Mathf.MoveTowards(phase, 0f, Time.deltaTime * bobFrequency);
 
-        // Apply smooth position transition
-        transform.localPosition = Vector3.Lerp(transform.localPosition, targetBobPosition, Time.deltaTime * bobSmoothness);
+        Vector3 swayAngles = new Vector3(-look.y, look.x, -look.x) * swayScale;
+        swayAngles = Vector3.ClampMagnitude(swayAngles, maximumSway);
+        float blend = 1f - Mathf.Exp(-swaySharpness * Time.deltaTime);
+        transform.localPosition = Vector3.Lerp(transform.localPosition, basePosition + bob, blend);
+        transform.localRotation = Quaternion.Slerp(transform.localRotation,
+            baseRotation * Quaternion.Euler(swayAngles), blend);
     }
 }

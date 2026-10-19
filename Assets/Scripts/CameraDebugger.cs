@@ -1,70 +1,18 @@
 using UnityEngine;
 
-public class CameraDebugger : MonoBehaviour
+public sealed class CameraDebugger : MonoBehaviour
 {
-    private PlayerFSM player;
-    private CameraFollow cameraFollow;
+    [SerializeField] private PlayerFSM player;
+    [SerializeField] private bool showOverlay = true;
 
-    private void Start()
+    private void Awake()
     {
-        player = FindObjectOfType<PlayerFSM>();
-        cameraFollow = FindObjectOfType<CameraFollow>();
-
-        Debug.Log("=== CAMERA SETUP CHECK ===");
-
-        if (player != null)
-            Debug.Log("✓ PlayerFSM found");
-        else
-            Debug.LogError("✗ PlayerFSM NOT found!");
-
-        if (cameraFollow != null)
-            Debug.Log("✓ CameraFollow found");
-        else
-            Debug.LogError("✗ CameraFollow NOT found!");
-
-        if (player != null && player.Actions != null)
-            Debug.Log("✓ PlayerInput Actions initialized");
-        else
-            Debug.LogError("✗ PlayerInput Actions NOT initialized!");
-    }
-
-    private void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.F1))
-        {
-            Debug.Log("=== REAL-TIME DEBUG ===");
-            Debug.Log($"Camera Position: {transform.position}");
-            Debug.Log($"Camera Rotation: {transform.eulerAngles}");
-
-            if (player != null)
-            {
-                Debug.Log($"Player Position: {player.transform.position}");
-                Debug.Log($"Player Rotation: {player.transform.eulerAngles}");
-            }
-
-            if (cameraFollow != null)
-            {
-                Debug.Log("CameraFollow is active");
-            }
-        }
+        if (player == null) player = FindAnyObjectByType<PlayerFSM>();
     }
 
     private void OnGUI()
     {
-        GUIStyle style = new GUIStyle();
-        style.fontSize = 16;
-        style.normal.textColor = Color.white;
-
-        GUI.Label(new Rect(10, 10, 500, 30), "Press F1 for Debug Info", style);
-
-        if (Camera.main != null)
-        {
-            GUI.Label(new Rect(10, 40, 500, 30), $"Camera Rot: {Camera.main.transform.eulerAngles}", style);
-        }
-
-        if (player != null)
-        {
-            GUI.Label(new Rect(10, 70, 500, 30), $"Player Rot: {player.transform.eulerAngles}", style);
-        }
+        if (!showOverlay || player == null) return;
+        GUI.Label(new Rect(12, 12, 420, 24), $"Grounded: {player.IsGrounded}  Vertical speed: {player.VerticalVelocity:F2}");
     }
 }

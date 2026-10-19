@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 92fe7149c156dce4db62d821feba7ec2, type: 3}
   m_Name: Pistol
   m_EditorClassIdentifier: Assembly-CSharp::WeaponData
-  weaponName: New Weapon
+  weaponName: Pistol
   weaponPrefab: {fileID: 0}
   recoilRotation: {x: 4.78, y: 1.56, z: 1.52}
   recoilKickback: {x: 0.02, y: 0.02, z: 0.1}

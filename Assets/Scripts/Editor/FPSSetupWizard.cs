@@ -1,335 +1,234 @@
-using UnityEngine;
 using UnityEditor;
+using UnityEngine;
+using UnityEngine.InputSystem;
 
-public class FPSSetupWizard : EditorWindow
+public sealed class FPSSetupWizard : EditorWindow
 {
-    private GameObject playerPrefab;
-    private GameObject weaponModel;
-    private GameObject tracerPrefab;
-    private WeaponData weaponData;
+    [SerializeField] private GameObject playerRoot;
+    [SerializeField] private GameObject groundObject;
+    [SerializeField] private GameObject weaponPrefab;
+    [SerializeField] private GameObject tracerPrefab;
+    [SerializeField] private WeaponData weaponData;
 
-    [MenuItem("Tools/FPS Setup Wizard")]
-    public static void ShowWindow()
-    {
-        GetWindow<FPSSetupWizard>("FPS Setup Wizard");
-    }
+    [MenuItem("Tools/FPS/Setup Selected Character")]
+    private static void Open() => GetWindow<FPSSetupWizard>("FPS Setup");
 
     private void OnGUI()
     {
-        GUILayout.Label("FPS Project Setup Wizard", EditorStyles.boldLabel);
-        GUILayout.Space(10);
+        EditorGUILayout.HelpBox("Select the character root and the ground Plane. This configures the collision root, centers the visual rig above the floor, and wires the first person camera and weapon.", MessageType.Info);
+        playerRoot = (GameObject)EditorGUILayout.ObjectField("Character Root", playerRoot != null ? playerRoot : Selection.activeGameObject, typeof(GameObject), true);
+        groundObject = (GameObject)EditorGUILayout.ObjectField("Ground Plane", groundObject, typeof(GameObject), true);
+        weaponPrefab = (GameObject)EditorGUILayout.ObjectField("Weapon Prefab (optional)", weaponPrefab, typeof(GameObject), false);
+        weaponData = (WeaponData)EditorGUILayout.ObjectField("Weapon Data (optional)", weaponData, typeof(WeaponData), false);
+        tracerPrefab = (GameObject)EditorGUILayout.ObjectField("Tracer Prefab (optional)", tracerPrefab, typeof(GameObject), false);
 
-        EditorGUILayout.HelpBox("This wizard will automatically set up your player, camera, and weapon systems.", MessageType.Info);
-        GUILayout.Space(10);
-
-        GUILayout.Label("Optional References:", EditorStyles.boldLabel);
-        weaponModel = (GameObject)EditorGUILayout.ObjectField("Weapon Model (Optional)", weaponModel, typeof(GameObject), false);
-        tracerPrefab = (GameObject)EditorGUILayout.ObjectField("Tracer Prefab (Optional)", tracerPrefab, typeof(GameObject), false);
-        weaponData = (WeaponData)EditorGUILayout.ObjectField("Weapon Data (Optional)", weaponData, typeof(WeaponData), false);
-
-        GUILayout.Space(20);
-
-        if (GUILayout.Button("Setup Complete FPS System", GUILayout.Height(40)))
-        {
-            SetupFPSSystem();
-        }
-
-        GUILayout.Space(10);
-
-        if (GUILayout.Button("Create Default Weapon Data", GUILayout.Height(30)))
-        {
-            CreateDefaultWeaponData();
-        }
-
-        if (GUILayout.Button("Create Simple Tracer Prefab", GUILayout.Height(30)))
-        {
-            CreateSimpleTracerPrefab();
-        }
+        EditorGUILayout.Space();
+        using (new EditorGUI.DisabledScope(playerRoot == null))
+            if (GUILayout.Button("Configure FPS Character", GUILayout.Height(36))) Configure();
     }
 
-    private void SetupFPSSystem()
+    private void Configure()
     {
-        // 1. Create or find Player
-        GameObject player = GameObject.Find("Player");
-        if (player == null)
+        if (playerRoot == null) return;
+        if (groundObject == null) groundObject = GameObject.Find("Plane") ?? GameObject.Find("Ground");
+        Collider floorCollider = groundObject != null ? groundObject.GetComponent<Collider>() : null;
+        if (floorCollider == null)
         {
-            player = new GameObject("Player");
-            Debug.Log("Created Player GameObject");
+            EditorUtility.DisplayDialog("Ground collider required", "Assign the Plane or Ground object with a collider, then run setup again.", "OK");
+            return;
         }
 
-        // Add CharacterController
-        CharacterController controller = player.GetComponent<CharacterController>();
-        if (controller == null)
+        Undo.IncrementCurrentGroup();
+        int undoGroup = Undo.GetCurrentGroup();
+        Undo.SetCurrentGroupName("Configure FPS Character");
+        Undo.RegisterFullObjectHierarchyUndo(playerRoot, "Configure FPS Character");
+
+        Transform root = playerRoot.transform;
+        CharacterController controller = GetOrAdd<CharacterController>(playerRoot);
+        controller.height = 2f;
+        controller.radius = 0.35f;
+        controller.center = new Vector3(0f, 1f, 0f);
+        controller.stepOffset = 0.3f;
+        controller.skinWidth = 0.04f;
+        controller.minMoveDistance = 0f;
+
+        float floorY = floorCollider.bounds.max.y;
+        Vector3 rootPosition = root.position;
+        rootPosition.y = floorY;
+        root.position = rootPosition;
+
+        Transform visuals = FindOrCreateChild(root, "Visuals");
+        foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
         {
-            controller = player.AddComponent<CharacterController>();
-            controller.center = new Vector3(0, 1, 0);
-            controller.radius = 0.5f;
-            controller.height = 2f;
-            Debug.Log("Added CharacterController to Player");
+            if (child == root || child == visuals || child.IsChildOf(visuals)) continue;
+            if (child.GetComponent<Camera>() != null || child.name == "PlayerCamera") continue;
+            if (child.parent == root) Undo.SetTransformParent(child, visuals, "Move rig under Visuals");
         }
 
-        // Add PlayerFSM
-        PlayerFSM playerFSM = player.GetComponent<PlayerFSM>();
-        if (playerFSM == null)
+        // Place the imported rig's lowest rendered point on the plane. The
+        // CharacterController stays on the clean feet-level PlayerRoot.
+        Renderer[] renderers = visuals.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length > 0)
         {
-            playerFSM = player.AddComponent<PlayerFSM>();
-            Debug.Log("Added PlayerFSM to Player");
+            float lowest = float.PositiveInfinity;
+            foreach (Renderer renderer in renderers) lowest = Mathf.Min(lowest, renderer.bounds.min.y);
+            Vector3 visualPosition = visuals.position;
+            visualPosition.y += floorY - lowest;
+            visuals.position = visualPosition;
         }
 
-        // Add visual capsule if no children
-        if (player.transform.childCount == 0 || player.transform.Find("PlayerModel") == null)
+        PlayerFSM player = GetOrAdd<PlayerFSM>(playerRoot);
+        SetReference(player, "controller", controller);
+
+        Transform cameraTransform = FindCamera(root);
+        Transform cameraPivot = FindOrCreateChild(root, "CameraPivot");
+        cameraPivot.localPosition = new Vector3(0f, 1.6f, 0f);
+        cameraPivot.localRotation = Quaternion.identity;
+        GameObject cameraObject;
+        if (cameraTransform == null)
         {
-            GameObject model = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            model.name = "PlayerModel";
-            model.transform.SetParent(player.transform);
-            model.transform.localPosition = new Vector3(0, 1, 0);
-            model.transform.localRotation = Quaternion.identity;
-            DestroyImmediate(model.GetComponent<Collider>()); // Remove duplicate collider
-            Debug.Log("Created Player visual model");
+            cameraObject = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
+            Undo.RegisterCreatedObjectUndo(cameraObject, "Create first person camera");
+            cameraTransform = cameraObject.transform;
+        }
+        else cameraObject = cameraTransform.gameObject;
+        Undo.SetTransformParent(cameraTransform, cameraPivot, "Parent camera to pivot");
+        cameraTransform.localPosition = Vector3.zero;
+        cameraTransform.localRotation = Quaternion.identity;
+        cameraObject.tag = "MainCamera";
+
+        CameraFollow cameraFollow = GetOrAdd<CameraFollow>(cameraObject);
+        SetReference(cameraFollow, "player", player);
+
+        Transform weaponHolder = FindOrCreateChild(cameraTransform, "WeaponHolder");
+        weaponHolder.localPosition = new Vector3(0.28f, -0.25f, 0.45f);
+        weaponHolder.localRotation = Quaternion.identity;
+        WeaponSwayAndBob oldSway = weaponHolder.GetComponent<WeaponSwayAndBob>();
+        if (oldSway != null) Undo.DestroyObjectImmediate(oldSway);
+        foreach (WeaponHandler duplicate in weaponHolder.GetComponentsInChildren<WeaponHandler>(true))
+            Undo.DestroyObjectImmediate(duplicate);
+        Transform swayRoot = FindOrCreateChild(weaponHolder, "Sway");
+        Transform recoilRoot = FindDescendant(weaponHolder, "Recoil");
+        if (recoilRoot == null) recoilRoot = FindOrCreateChild(swayRoot, "Recoil");
+        else if (recoilRoot.parent != swayRoot) Undo.SetTransformParent(recoilRoot, swayRoot, "Place recoil under sway holder");
+        WeaponSwayAndBob sway = GetOrAdd<WeaponSwayAndBob>(swayRoot.gameObject);
+        RecoilSpring recoil = GetOrAdd<RecoilSpring>(recoilRoot.gameObject);
+        SetReference(sway, "player", player);
+        SetReference(recoil, "cameraFollow", cameraFollow);
+
+        if (weaponPrefab != null && recoilRoot.childCount == 0)
+        {
+            GameObject model = (GameObject)PrefabUtility.InstantiatePrefab(weaponPrefab);
+            Undo.RegisterCreatedObjectUndo(model, "Add weapon model");
+            model.transform.SetParent(recoilRoot, false);
         }
 
-        // 2. Setup Camera Hierarchy
-        GameObject cameraHolder = player.transform.Find("CameraHolder")?.gameObject;
-        if (cameraHolder == null)
-        {
-            cameraHolder = new GameObject("CameraHolder");
-            cameraHolder.transform.SetParent(player.transform);
-            cameraHolder.transform.localPosition = Vector3.zero;
-            Debug.Log("Created CameraHolder");
-        }
-
-        Camera mainCamera = Camera.main;
-        if (mainCamera == null)
-        {
-            GameObject camObj = new GameObject("Main Camera");
-            mainCamera = camObj.AddComponent<Camera>();
-            camObj.tag = "MainCamera";
-            Debug.Log("Created Main Camera");
-        }
-
-        mainCamera.transform.SetParent(cameraHolder.transform);
-        mainCamera.transform.localPosition = new Vector3(0, 1.6f, 0);
-        mainCamera.transform.localRotation = Quaternion.identity;
-
-        // Add CameraFollow
-        CameraFollow cameraFollow = mainCamera.GetComponent<CameraFollow>();
-        if (cameraFollow == null)
-        {
-            cameraFollow = mainCamera.gameObject.AddComponent<CameraFollow>();
-            Debug.Log("Added CameraFollow to Main Camera");
-        }
-
-        // Use reflection to set serialized private fields
-        SerializedObject so = new SerializedObject(cameraFollow);
-        so.FindProperty("target").objectReferenceValue = player.transform;
-        so.FindProperty("smoothSpeed").floatValue = 5f;
-        so.FindProperty("offset").vector3Value = new Vector3(0, 6, -8);
-        so.FindProperty("rotationSpeed").floatValue = 3f;
-        so.FindProperty("minDistance").floatValue = 0.5f;
-        so.ApplyModifiedProperties();
-        Debug.Log("Configured CameraFollow component");
-
-        // 3. Setup Weapon Hierarchy
-        GameObject weaponHolder = mainCamera.transform.Find("WeaponHolder")?.gameObject;
-        if (weaponHolder == null)
-        {
-            weaponHolder = new GameObject("WeaponHolder");
-            weaponHolder.transform.SetParent(mainCamera.transform);
-            weaponHolder.transform.localPosition = new Vector3(0.3f, -0.3f, 0.5f);
-            weaponHolder.transform.localRotation = Quaternion.identity;
-            Debug.Log("Created WeaponHolder");
-        }
-
-        // Add RecoilSpring
-        RecoilSpring recoilSpring = weaponHolder.GetComponent<RecoilSpring>();
-        if (recoilSpring == null)
-        {
-            recoilSpring = weaponHolder.AddComponent<RecoilSpring>();
-            Debug.Log("Added RecoilSpring");
-        }
-
-        SerializedObject recoilSO = new SerializedObject(recoilSpring);
-        recoilSO.FindProperty("stiffness").floatValue = 150f;
-        recoilSO.FindProperty("damping").floatValue = 12f;
-        recoilSO.ApplyModifiedProperties();
-
-        // Add WeaponSwayAndBob
-        WeaponSwayAndBob swayBob = weaponHolder.GetComponent<WeaponSwayAndBob>();
-        if (swayBob == null)
-        {
-            swayBob = weaponHolder.AddComponent<WeaponSwayAndBob>();
-            Debug.Log("Added WeaponSwayAndBob");
-        }
-
-        SerializedObject swaySO = new SerializedObject(swayBob);
-        swaySO.FindProperty("player").objectReferenceValue = playerFSM;
-        swaySO.ApplyModifiedProperties();
-
-        // Add WeaponHandler
-        WeaponHandler weaponHandler = weaponHolder.GetComponent<WeaponHandler>();
-        if (weaponHandler == null)
-        {
-            weaponHandler = weaponHolder.AddComponent<WeaponHandler>();
-            Debug.Log("Added WeaponHandler");
-        }
-
-        // Create FirePoint
-        GameObject firePoint = weaponHolder.transform.Find("FirePoint")?.gameObject;
+        Transform firePoint = FindDescendant(recoilRoot, "FirePoint");
         if (firePoint == null)
         {
-            firePoint = new GameObject("FirePoint");
-            firePoint.transform.SetParent(weaponHolder.transform);
-            firePoint.transform.localPosition = new Vector3(0, 0, 0.5f);
-            firePoint.transform.localRotation = Quaternion.identity;
-            Debug.Log("Created FirePoint");
+            GameObject fire = new GameObject("FirePoint");
+            Undo.RegisterCreatedObjectUndo(fire, "Create FirePoint");
+            fire.transform.SetParent(recoilRoot, false);
+            fire.transform.localPosition = new Vector3(0f, 0.04f, 0.6f);
+            firePoint = fire.transform;
         }
 
-        // Add weapon model if provided
-        if (weaponModel != null && firePoint.transform.childCount == 0)
-        {
-            GameObject weaponInstance = Instantiate(weaponModel, firePoint.transform);
-            weaponInstance.name = "WeaponModel";
-            weaponInstance.transform.localPosition = Vector3.zero;
-            weaponInstance.transform.localRotation = Quaternion.identity;
-            Debug.Log("Added weapon model");
-        }
+        WeaponHandler handler = GetOrAdd<WeaponHandler>(playerRoot);
+        SetReference(handler, "player", player);
+        SetReference(handler, "firePoint", firePoint);
+        SetReference(handler, "recoilSpring", recoil);
+        if (weaponData != null) SetReference(handler, "currentWeapon", weaponData);
 
-        // Configure WeaponHandler
-        SerializedObject handlerSO = new SerializedObject(weaponHandler);
-        handlerSO.FindProperty("player").objectReferenceValue = playerFSM;
-        handlerSO.FindProperty("recoilSpring").objectReferenceValue = recoilSpring;
-        handlerSO.FindProperty("firePoint").objectReferenceValue = firePoint.transform;
-        if (weaponData != null)
-        {
-            handlerSO.FindProperty("currentWeapon").objectReferenceValue = weaponData;
-        }
-        handlerSO.ApplyModifiedProperties();
-        Debug.Log("Configured WeaponHandler");
+        ConfigurePlayerInput(playerRoot);
+        ConfigurePooler();
 
-        // 4. Setup ObjectPooler
-        ObjectPooler pooler = FindObjectOfType<ObjectPooler>();
+        EditorUtility.SetDirty(playerRoot);
+        Undo.CollapseUndoOperations(undoGroup);
+        Selection.activeGameObject = playerRoot;
+        EditorUtility.DisplayDialog("FPS Character Configured", "PlayerRoot now sits on the ground surface. The visual rig is offset separately, the controller is assigned, and the camera and weapon references are wired. Save the scene.", "OK");
+    }
+
+    private void ConfigurePlayerInput(GameObject root)
+    {
+        UnityEngine.InputSystem.PlayerInput input = root.GetComponent<UnityEngine.InputSystem.PlayerInput>();
+        if (input == null) input = Undo.AddComponent<UnityEngine.InputSystem.PlayerInput>(root);
+        InputActionAsset asset = AssetDatabase.LoadAssetAtPath<InputActionAsset>("Assets/PlayerInput.inputactions");
+        if (asset == null) return;
+        SerializedObject serialized = new SerializedObject(input);
+        serialized.FindProperty("m_Actions").objectReferenceValue = asset;
+        serialized.FindProperty("m_DefaultActionMap").stringValue = "Player";
+        serialized.FindProperty("m_NotificationBehavior").intValue = (int)UnityEngine.InputSystem.PlayerNotifications.SendMessages;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    private void ConfigurePooler()
+    {
+        if (tracerPrefab == null) return;
+        ObjectPooler pooler = FindAnyObjectByType<ObjectPooler>();
         if (pooler == null)
         {
-            GameObject poolerObj = new GameObject("ObjectPooler");
-            pooler = poolerObj.AddComponent<ObjectPooler>();
-            Debug.Log("Created ObjectPooler");
+            GameObject poolerObject = new GameObject("ObjectPooler");
+            Undo.RegisterCreatedObjectUndo(poolerObject, "Create ObjectPooler");
+            pooler = Undo.AddComponent<ObjectPooler>(poolerObject);
         }
 
-        if (tracerPrefab != null)
+        SerializedObject so = new SerializedObject(pooler);
+        SerializedProperty list = so.FindProperty("pools");
+        for (int i = 0; i < list.arraySize; i++)
         {
-            SerializedObject poolerSO = new SerializedObject(pooler);
-            SerializedProperty poolsList = poolerSO.FindProperty("pools");
-
-            // Check if Tracer pool already exists
-            bool hasTracerPool = false;
-            for (int i = 0; i < poolsList.arraySize; i++)
-            {
-                if (poolsList.GetArrayElementAtIndex(i).FindPropertyRelative("tag").stringValue == "Tracer")
-                {
-                    hasTracerPool = true;
-                    break;
-                }
-            }
-
-            if (!hasTracerPool)
-            {
-                poolsList.InsertArrayElementAtIndex(poolsList.arraySize);
-                SerializedProperty newPool = poolsList.GetArrayElementAtIndex(poolsList.arraySize - 1);
-                newPool.FindPropertyRelative("tag").stringValue = "Tracer";
-                newPool.FindPropertyRelative("prefab").objectReferenceValue = tracerPrefab;
-                newPool.FindPropertyRelative("size").intValue = 20;
-                poolerSO.ApplyModifiedProperties();
-                Debug.Log("Added Tracer pool to ObjectPooler");
-            }
+            SerializedProperty element = list.GetArrayElementAtIndex(i);
+            if (element.FindPropertyRelative("tag").stringValue != "Tracer") continue;
+            element.FindPropertyRelative("prefab").objectReferenceValue = tracerPrefab;
+            element.FindPropertyRelative("size").intValue = 24;
+            so.ApplyModifiedProperties();
+            return;
         }
-
-        // 5. Setup Ground if missing
-        if (GameObject.Find("Ground") == null)
-        {
-            GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            ground.name = "Ground";
-            ground.transform.position = Vector3.zero;
-            ground.transform.localScale = new Vector3(10, 1, 10);
-            Debug.Log("Created Ground plane");
-        }
-
-        EditorUtility.DisplayDialog("Setup Complete!",
-            "FPS system has been set up successfully!\n\n" +
-            "Next steps:\n" +
-            "1. Create a WeaponData asset (Tools → Create Default Weapon Data)\n" +
-            "2. Assign it to WeaponHandler\n" +
-            "3. Press Play and test with WASD, Shift, Mouse, Space, Left Click, R",
-            "OK");
-
-        Debug.Log("=== FPS Setup Complete ===");
+        int index = list.arraySize++;
+        SerializedProperty pool = list.GetArrayElementAtIndex(index);
+        pool.FindPropertyRelative("tag").stringValue = "Tracer";
+        pool.FindPropertyRelative("prefab").objectReferenceValue = tracerPrefab;
+        pool.FindPropertyRelative("size").intValue = 24;
+        so.ApplyModifiedProperties();
     }
 
-    private void CreateDefaultWeaponData()
+    private static Transform FindCamera(Transform root)
     {
-        WeaponData data = ScriptableObject.CreateInstance<WeaponData>();
-        data.weaponName = "Assault Rifle";
-        data.isAutomatic = true;
-        data.fireRate = 600f;
-        data.damage = 25f;
-        data.range = 100f;
-        data.magazineSize = 30;
-        data.reloadTime = 1.8f;
-        data.recoilRotation = new Vector3(4f, 1.5f, 1f);
-        data.recoilKickback = new Vector3(0.02f, 0.02f, 0.1f);
-        data.baseSpread = 0.5f;
-        data.maxSpread = 3f;
-
-        string path = "Assets/WeaponData_AssaultRifle.asset";
-        AssetDatabase.CreateAsset(data, path);
-        AssetDatabase.SaveAssets();
-        EditorUtility.FocusProjectWindow();
-        Selection.activeObject = data;
-
-        Debug.Log($"Created default WeaponData at {path}");
-        EditorUtility.DisplayDialog("Weapon Data Created",
-            $"Default Assault Rifle data created at:\n{path}\n\nNow assign it to WeaponHandler's 'Current Weapon' field!",
-            "OK");
+        foreach (Camera camera in root.GetComponentsInChildren<Camera>(true))
+            if (camera.transform != root && camera.GetComponent<CameraFollow>() != null) return camera.transform;
+        foreach (Camera camera in root.GetComponentsInChildren<Camera>(true))
+            if (camera.transform != root) return camera.transform;
+        return null;
     }
 
-    private void CreateSimpleTracerPrefab()
+    private static Transform FindOrCreateChild(Transform parent, string name)
     {
-        // Create tracer object
-        GameObject tracer = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        tracer.name = "BulletTracer";
+        Transform child = parent.Find(name);
+        if (child != null) return child;
+        GameObject created = new GameObject(name);
+        Undo.RegisterCreatedObjectUndo(created, $"Create {name}");
+        created.transform.SetParent(parent, false);
+        return created.transform;
+    }
 
-        // Scale to thin line
-        tracer.transform.localScale = new Vector3(0.01f, 0.5f, 0.01f);
+    private static Transform FindDescendant(Transform root, string name)
+    {
+        foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+            if (child.name == name) return child;
+        return null;
+    }
 
-        // Remove collider
-        DestroyImmediate(tracer.GetComponent<Collider>());
+    private static T GetOrAdd<T>(GameObject target) where T : Component
+    {
+        T component = target.GetComponent<T>();
+        return component != null ? component : Undo.AddComponent<T>(target);
+    }
 
-        // Create bright material
-        Material tracerMat = new Material(Shader.Find("Standard"));
-        tracerMat.color = new Color(1f, 0.8f, 0f); // Bright yellow
-        tracerMat.SetFloat("_Metallic", 0f);
-        tracerMat.EnableKeyword("_EMISSION");
-        tracerMat.SetColor("_EmissionColor", new Color(1f, 0.8f, 0f) * 2f);
-        tracer.GetComponent<Renderer>().material = tracerMat;
-
-        // Add BulletTracer script
-        BulletTracer tracerScript = tracer.AddComponent<BulletTracer>();
-        SerializedObject tracerSO = new SerializedObject(tracerScript);
-        tracerSO.FindProperty("speed").floatValue = 100f;
-        tracerSO.ApplyModifiedProperties();
-
-        // Save as prefab
-        string path = "Assets/BulletTracerPrefab.prefab";
-        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(tracer, path);
-        DestroyImmediate(tracer);
-
-        EditorUtility.FocusProjectWindow();
-        Selection.activeObject = prefab;
-
-        Debug.Log($"Created tracer prefab at {path}");
-        EditorUtility.DisplayDialog("Tracer Prefab Created",
-            $"Bullet tracer prefab created at:\n{path}\n\nDrag this to the wizard's 'Tracer Prefab' field and run setup again!",
-            "OK");
-
-        tracerPrefab = prefab;
+    private static void SetReference(Object target, string property, Object value)
+    {
+        SerializedObject so = new SerializedObject(target);
+        SerializedProperty field = so.FindProperty(property);
+        if (field == null) return;
+        field.objectReferenceValue = value;
+        so.ApplyModifiedProperties();
     }
 }

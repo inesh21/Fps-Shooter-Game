@@ -2,175 +2,123 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class WeaponHandler : MonoBehaviour
+public sealed class WeaponHandler : MonoBehaviour
 {
-    [Header("Data & References")]
     [SerializeField] private WeaponData currentWeapon;
     [SerializeField] private Transform firePoint;
     [SerializeField] private PlayerFSM player;
     [SerializeField] private RecoilSpring recoilSpring;
+    [SerializeField] private string tracerPoolTag = "Tracer";
 
-    private int currentAmmo;
-    private bool isReloading;
-    private float lastFireTime;
-    private bool isShootingPressed;
+    private int ammo;
+    private float nextShotTime;
+    private bool reloading;
+    private Coroutine reloadRoutine;
+
+    public int Ammo => ammo;
 
     private void Awake()
     {
-        if (player == null) 
-            player = GetComponentInParent<PlayerFSM>();
+        if (player == null) player = GetComponentInParent<PlayerFSM>();
+        if (recoilSpring == null) recoilSpring = GetComponentInChildren<RecoilSpring>();
     }
 
-    private void Start()
+    private void OnEnable()
     {
-        // Subscribe in Start() to ensure PlayerFSM.Awake() has already run
-        if (player != null && player.Actions != null)
-        {
-            player.Actions.Player.Attack.started += OnAttackStarted;
-            player.Actions.Player.Attack.canceled += OnAttackCanceled;
-            player.Actions.Player.Reload.performed += OnReloadPerformed;
-        }
-
-        EquipWeapon(currentWeapon);
+        if (player == null || player.Actions == null) return;
+        player.Actions.Player.Reload.performed += OnReload;
     }
 
     private void OnDisable()
     {
         if (player != null && player.Actions != null)
-        {
-            player.Actions.Player.Attack.started -= OnAttackStarted;
-            player.Actions.Player.Attack.canceled -= OnAttackCanceled;
-            player.Actions.Player.Reload.performed -= OnReloadPerformed;
-        }
+            player.Actions.Player.Reload.performed -= OnReload;
+        if (reloadRoutine != null) StopCoroutine(reloadRoutine);
+        reloadRoutine = null;
+        reloading = false;
     }
 
-    public void EquipWeapon(WeaponData data)
+    private void Start()
     {
-        currentWeapon = data;
-        if (currentWeapon != null)
-        {
-            currentAmmo = currentWeapon.magazineSize;
-        }
+        ammo = currentWeapon != null ? currentWeapon.magazineSize : 0;
+        if (currentWeapon == null)
+            Debug.LogWarning("WeaponHandler has no WeaponData assigned; shooting is disabled.", this);
+        if (firePoint == null)
+            Debug.LogWarning("WeaponHandler has no Fire Point assigned; the camera is used as the muzzle.", this);
     }
-
-    private void OnAttackStarted(InputAction.CallbackContext context)
-    {
-        if (!currentWeapon.isAutomatic)
-        {
-            // For semi-auto, shoot once on button down
-            if (currentAmmo > 0 && !isReloading && Time.time - lastFireTime >= currentWeapon.TimeBetweenShots)
-            {
-                Shoot();
-                lastFireTime = Time.time;
-            }
-        }
-        else
-        {
-            // For full-auto, just set the flag
-            isShootingPressed = true;
-        }
-    }
-
-    private void OnAttackCanceled(InputAction.CallbackContext context) => isShootingPressed = false;
-    private void OnReloadPerformed(InputAction.CallbackContext context) => StartCoroutine(Reload());
 
     private void Update()
     {
-        HandleShooting();
-    }
-
-    private void HandleShooting()
-    {
-        // Only handle automatic fire here, semi-auto is handled in OnAttackStarted
-        if (!isShootingPressed || isReloading || currentWeapon == null) return;
-        if (!currentWeapon.isAutomatic) return; // Semi-auto handled in input callback
-
-        if (Time.time - lastFireTime >= currentWeapon.TimeBetweenShots)
+        if (currentWeapon == null || player == null || player.Actions == null || reloading) return;
+        InputAction attack = player.Actions.Player.Attack;
+        bool shouldFire = currentWeapon.isAutomatic ? attack.IsPressed() : attack.WasPressedThisFrame();
+        if (shouldFire && Time.time >= nextShotTime)
         {
-            if (currentAmmo > 0)
-            {
-                Shoot();
-                lastFireTime = Time.time;
-            }
-            else
-            {
-                StartCoroutine(Reload());
-            }
+            if (ammo > 0) Fire();
+            else BeginReload();
         }
     }
 
-    private void Shoot()
+    public void Equip(WeaponData data)
     {
-        currentAmmo--;
+        currentWeapon = data;
+        ammo = data != null ? data.magazineSize : 0;
+        reloading = false;
+        if (reloadRoutine != null) StopCoroutine(reloadRoutine);
+        reloadRoutine = null;
+    }
 
-        Debug.Log($"SHOOTING! Ammo: {currentAmmo}");
+    private void OnReload(InputAction.CallbackContext context) => BeginReload();
 
-        if (recoilSpring != null && currentWeapon != null)
+    private void BeginReload()
+    {
+        if (currentWeapon == null || reloading || ammo >= currentWeapon.magazineSize) return;
+        reloadRoutine = StartCoroutine(ReloadRoutine());
+    }
+
+    private IEnumerator ReloadRoutine()
+    {
+        reloading = true;
+        yield return new WaitForSeconds(currentWeapon.reloadTime);
+        if (currentWeapon != null) ammo = currentWeapon.magazineSize;
+        reloading = false;
+        reloadRoutine = null;
+    }
+
+    private void Fire()
+    {
+        Camera viewCamera = player.transform.GetComponentInChildren<Camera>();
+        if (viewCamera == null) viewCamera = Camera.main;
+        if (viewCamera == null) return;
+
+        ammo--;
+        nextShotTime = Time.time + currentWeapon.SecondsPerShot;
+        Vector3 origin = viewCamera.transform.position;
+        Vector3 direction = viewCamera.transform.forward;
+        if (currentWeapon.baseSpread > 0f)
         {
-            Debug.Log($"Applying recoil: {currentWeapon.recoilRotation}");
+            direction += viewCamera.transform.right * Random.Range(-currentWeapon.baseSpread, currentWeapon.baseSpread) * 0.01f;
+            direction += viewCamera.transform.up * Random.Range(-currentWeapon.baseSpread, currentWeapon.baseSpread) * 0.01f;
+            direction.Normalize();
+        }
+
+        Ray ray = new Ray(origin, direction);
+        Vector3 target = origin + direction * currentWeapon.range;
+        if (Physics.Raycast(ray, out RaycastHit hit, currentWeapon.range, currentWeapon.hitLayers, QueryTriggerInteraction.Ignore))
+        {
+            target = hit.point;
+            hit.collider.SendMessage("TakeDamage", currentWeapon.damage, SendMessageOptions.DontRequireReceiver);
+        }
+
+        if (recoilSpring != null)
             recoilSpring.ApplyRecoil(currentWeapon.recoilRotation, currentWeapon.recoilKickback);
-        }
-        else
-        {
-            Debug.LogWarning($"RecoilSpring: {(recoilSpring != null ? "OK" : "MISSING")} | CurrentWeapon: {(currentWeapon != null ? "OK" : "MISSING")}");
-        }
 
-        // 1. Raycast from FirePoint instead of camera center
-        Vector3 shootOrigin = firePoint != null ? firePoint.position : Camera.main.transform.position;
-        Vector3 shootDirection = Camera.main.transform.forward;
-
-        // Add slight random spread
-        if (currentWeapon != null)
-        {
-            shootDirection += new Vector3(
-                Random.Range(-currentWeapon.baseSpread, currentWeapon.baseSpread),
-                Random.Range(-currentWeapon.baseSpread, currentWeapon.baseSpread),
-                0
-            ) * 0.01f;
-            shootDirection.Normalize();
-        }
-
-        Ray ray = new Ray(shootOrigin, shootDirection);
-        Vector3 targetPoint;
-
-        if (Physics.Raycast(ray, out RaycastHit hit, currentWeapon.range, currentWeapon.hitLayers))
-        {
-            targetPoint = hit.point;
-            Debug.Log($"Hit {hit.collider.name} for {currentWeapon.damage} damage!");
-        }
-        else
-        {
-            // If nothing was hit, trace to maximum range
-            targetPoint = ray.GetPoint(currentWeapon.range);
-        }
-
-        // 2. Spawn Pooled Tracer from FirePoint
+        Vector3 muzzle = firePoint != null ? firePoint.position : origin;
         if (ObjectPooler.Instance != null)
         {
-            GameObject tracerObj = ObjectPooler.Instance.SpawnFromPool("Tracer", shootOrigin, Quaternion.identity);
-
-            if (tracerObj != null && tracerObj.TryGetComponent(out BulletTracer tracer))
-            {
-                tracer.Init(shootOrigin, targetPoint);
-            }
+            GameObject tracerObject = ObjectPooler.Instance.SpawnFromPool(tracerPoolTag, muzzle, Quaternion.LookRotation(target - muzzle));
+            if (tracerObject != null && tracerObject.TryGetComponent(out BulletTracer tracer))
+                tracer.Init(muzzle, target);
         }
-        else
-        {
-            Debug.LogWarning("ObjectPooler.Instance is null! Make sure ObjectPooler exists in the scene.");
-        }
-    }
-
-    private IEnumerator Reload()
-    {
-        if (isReloading || currentAmmo == currentWeapon.magazineSize) yield break;
-
-        isReloading = true;
-        Debug.Log("Reloading...");
-
-        yield return new WaitForSeconds(currentWeapon.reloadTime);
-
-        currentAmmo = currentWeapon.magazineSize;
-        isReloading = false;
-        Debug.Log("Reload Complete!");
     }
 }

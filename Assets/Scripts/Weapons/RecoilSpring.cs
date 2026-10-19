@@ -1,76 +1,43 @@
 using UnityEngine;
 
-public class RecoilSpring : MonoBehaviour
+public sealed class RecoilSpring : MonoBehaviour
 {
-    [Header("Spring Settings")]
-    [SerializeField] private float stiffness = 200f; // Speed of snap-back
-    [SerializeField] private float damping = 15f;    // Friction/absorption rate
+    [SerializeField, Min(0.01f)] private float returnTime = 0.12f;
+    [SerializeField, Min(0f)] private float cameraMultiplier = 0.8f;
+    [SerializeField] private CameraFollow cameraFollow;
 
-    [Header("Camera Recoil")]
-    [SerializeField] private bool applyCameraRecoil = true;
-    [SerializeField] private float cameraRecoilMultiplier = 0.8f;
-
-    private CameraFollow cameraRecoil;
-
-    private Vector3 currentRotation;
-    private Vector3 targetRotation;
+    private Vector3 startPosition;
+    private Quaternion startRotation;
+    private Vector3 positionOffset;
+    private Vector3 rotationOffset;
+    private Vector3 positionVelocity;
     private Vector3 rotationVelocity;
 
-    private Vector3 currentPosition;
-    private Vector3 targetPosition;
-    private Vector3 positionVelocity;
-
-    private void Start()
+    private void Awake()
     {
-        // Try to find CameraFollow component (which now has recoil built in)
-        if (Camera.main != null)
-        {
-            cameraRecoil = Camera.main.GetComponent<CameraFollow>();
-            if (cameraRecoil == null && applyCameraRecoil)
-            {
-                Debug.LogWarning("CameraFollow not found on Main Camera! Camera recoil will not work.");
-            }
-        }
+        startPosition = transform.localPosition;
+        startRotation = transform.localRotation;
+        if (cameraFollow == null && Camera.main != null)
+            cameraFollow = Camera.main.GetComponent<CameraFollow>();
     }
 
-    private void Update()
+    private void LateUpdate()
     {
-        targetRotation = Vector3.SmoothDamp(targetRotation, Vector3.zero, ref rotationVelocity, 1f / stiffness);
-        currentRotation = Vector3.Slerp(currentRotation, targetRotation, Time.deltaTime * damping);
-        transform.localRotation = Quaternion.Euler(currentRotation);
-
-        targetPosition = Vector3.SmoothDamp(targetPosition, Vector3.zero, ref positionVelocity, 1f / stiffness);
-        currentPosition = Vector3.Lerp(currentPosition, targetPosition, Time.deltaTime * damping);
-        transform.localPosition = currentPosition;
+        positionOffset = Vector3.SmoothDamp(positionOffset, Vector3.zero, ref positionVelocity, returnTime);
+        rotationOffset = Vector3.SmoothDamp(rotationOffset, Vector3.zero, ref rotationVelocity, returnTime);
+        transform.localPosition = startPosition + positionOffset;
+        transform.localRotation = startRotation * Quaternion.Euler(rotationOffset);
     }
 
-    /// <summary>
-    /// Applies an instant physical recoil kick.
-    /// </summary>
-    /// <param name="recoilRotation">Degrees of rotational kick (Pitch, Yaw, Roll)</param>
-    /// <param name="recoilKickback">Positional backward kick (X, Y, Z)</param>
-    public void ApplyRecoil(Vector3 recoilRotation, Vector3 recoilKickback)
+    public void ApplyRecoil(Vector3 rotation, Vector3 kickback)
     {
-        // Weapon visual recoil
-        targetRotation += new Vector3(
-            -recoilRotation.x, // Vertical pitch kick
-            Random.Range(-recoilRotation.y, recoilRotation.y), // Horizontal yaw variation
-            Random.Range(-recoilRotation.z, recoilRotation.z)  // Roll variation
-        );
+        rotationOffset += new Vector3(-Mathf.Abs(rotation.x), Random.Range(-Mathf.Abs(rotation.y), Mathf.Abs(rotation.y)),
+            Random.Range(-Mathf.Abs(rotation.z), Mathf.Abs(rotation.z)));
+        positionOffset += new Vector3(Random.Range(-Mathf.Abs(kickback.x), Mathf.Abs(kickback.x)),
+            Random.Range(-Mathf.Abs(kickback.y), Mathf.Abs(kickback.y)), -Mathf.Abs(kickback.z));
 
-        targetPosition += new Vector3(
-            Random.Range(-recoilKickback.x, recoilKickback.x),
-            Random.Range(-recoilKickback.y, recoilKickback.y),
-            -recoilKickback.z // Push back along Z-axis
-        );
-
-        // Apply camera recoil using dedicated component for smooth recovery
-        if (applyCameraRecoil && cameraRecoil != null)
-        {
-            float cameraPitch = -recoilRotation.x * cameraRecoilMultiplier;
-            float cameraYaw = Random.Range(-recoilRotation.y, recoilRotation.y) * cameraRecoilMultiplier * 0.3f;
-
-            cameraRecoil.AddRecoil(cameraPitch, cameraYaw);
-        }
+        if (cameraFollow != null)
+            cameraFollow.AddRecoil(-Mathf.Abs(rotation.x) * cameraMultiplier,
+                Random.Range(-Mathf.Abs(rotation.y), Mathf.Abs(rotation.y)) * cameraMultiplier * 0.3f);
     }
 }

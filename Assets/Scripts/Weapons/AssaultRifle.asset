@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 92fe7149c156dce4db62d821feba7ec2, type: 3}
   m_Name: AssaultRifle
   m_EditorClassIdentifier: Assembly-CSharp::WeaponData
-  weaponName: New Weapon
+  weaponName: Assault Rifle
   weaponPrefab: {fileID: 0}
-  recoilRotation: {x: 3.21, y: 1.32, z: 2.82}
-  recoilKickback: {x: 2.2, y: 1.75, z: 1.56}
+  recoilRotation: {x: 4, y: 1.5, z: 1}
+  recoilKickback: {x: 0.02, y: 0.02, z: 0.1}
   isAutomatic: 1
   fireRate: 600
   damage: 25

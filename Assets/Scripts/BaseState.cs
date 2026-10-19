@@ -1,13 +1,10 @@
 public abstract class BaseState
 {
-    protected PlayerFSM player;
+    protected readonly PlayerFSM player;
 
-    public BaseState(PlayerFSM player)
-    {
-        this.player = player;
-    }
+    protected BaseState(PlayerFSM owner) { player = owner; }
 
-    public abstract void EnterState();
+    public virtual void EnterState() { }
     public abstract void UpdateState();
-    public abstract void ExitState();
+    public virtual void ExitState() { }
 }

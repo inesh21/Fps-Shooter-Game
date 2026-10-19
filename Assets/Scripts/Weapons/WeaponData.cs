@@ -1,31 +1,27 @@
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "NewWeaponData", menuName = "FPS/Weapon Data")]
-public class WeaponData : ScriptableObject
+[CreateAssetMenu(fileName = "WeaponData", menuName = "FPS/Weapon Data")]
+public sealed class WeaponData : ScriptableObject
 {
-    [Header("General Info")]
-    public string weaponName = "New Weapon";
+    [Header("Weapon")]
+    public string weaponName = "Rifle";
     public GameObject weaponPrefab;
-    [Header("Spring Recoil Profile")]
-    public Vector3 recoilRotation = new Vector3(4f, 1.5f, 1f); // Degrees
-    public Vector3 recoilKickback = new Vector3(0.02f, 0.02f, 0.1f); // Meters
 
-    [Header("Shooting Properties")]
+    [Header("Fire")]
     public bool isAutomatic = true;
-    public float fireRate = 600f; // Rounds per minute
-    public float damage = 25f;
-    public float range = 100f;
-    public LayerMask hitLayers;
+    [Min(1f)] public float fireRate = 600f;
+    [Min(0f)] public float damage = 25f;
+    [Min(0f)] public float range = 100f;
+    [Min(0f)] public float baseSpread = 0.5f;
+    public LayerMask hitLayers = Physics.DefaultRaycastLayers;
 
-    [Header("Ammo & Reloading")]
-    public int magazineSize = 30;
-    public float reloadTime = 1.8f;
+    [Header("Ammo")]
+    [Min(1)] public int magazineSize = 30;
+    [Min(0f)] public float reloadTime = 1.8f;
 
-    [Header("Recoil & Accuracy")]
-    public float baseSpread = 0.5f;
-    public float maxSpread = 3.0f;
-    public AnimationCurve recoilKickCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+    [Header("Recoil")]
+    public Vector3 recoilRotation = new Vector3(4f, 1.5f, 1f);
+    public Vector3 recoilKickback = new Vector3(0.02f, 0.02f, 0.1f);
 
-    // Calculated time between shots in seconds
-    public float TimeBetweenShots => 60f / fireRate;
+    public float SecondsPerShot => 60f / Mathf.Max(1f, fireRate);
 }
