@@ -4,6 +4,15 @@ public sealed class SprintState : BaseState
 {
     public SprintState(PlayerFSM player) : base(player) { }
 
+    public override void EnterState()
+    {
+        if (player.Animator != null)
+        {
+            player.Animator.SetFloat("Speed", 1f);
+            player.Animator.SetBool("IsGrounded", true);
+        }
+    }
+
     public override void UpdateState()
     {
         Vector2 input = player.ReadMoveInput();
@@ -19,4 +28,6 @@ public sealed class SprintState : BaseState
         }
         player.MoveHorizontally(input, player.sprintSpeed);
     }
+
+    public override void ExitState() { }
 }

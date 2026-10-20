@@ -14,40 +14,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WeaponData
   weaponName: Pistol
   weaponPrefab: {fileID: 0}
-  recoilRotation: {x: 4.78, y: 1.56, z: 1.52}
-  recoilKickback: {x: 0.02, y: 0.02, z: 0.1}
   isAutomatic: 1
-  fireRate: 300
+  fireRate: 100
   damage: 45
   range: 100
+  baseSpread: 0.5
   hitLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  magazineSize: 12
-  reloadTime: 1.6
-  baseSpread: 0.5
-  maxSpread: 3
-  recoilKickCurve:
-    serializedVersion: 2
-    m_Curve:
-    - serializedVersion: 3
-      time: 0
-      value: 0
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    - serializedVersion: 3
-      time: 1
-      value: 1
-      inSlope: 0
-      outSlope: 0
-      tangentMode: 0
-      weightedMode: 0
-      inWeight: 0
-      outWeight: 0
-    m_PreInfinity: 2
-    m_PostInfinity: 2
-    m_RotationOrder: 4
+  magazineSize: 6
+  reloadTime: 2
+  recoilRotation: {x: 4.78, y: 1.56, z: 1.52}
+  recoilKickback: {x: 0.02, y: 0.02, z: 0.1}

@@ -4,6 +4,15 @@ public sealed class IdleState : BaseState
 {
     public IdleState(PlayerFSM player) : base(player) { }
 
+    public override void EnterState()
+    {
+        if (player.Animator != null)
+        {
+            player.Animator.SetFloat("Speed", 0f);
+            player.Animator.SetBool("IsGrounded", true);
+        }
+    }
+
     public override void UpdateState()
     {
         Vector2 input = player.ReadMoveInput();
@@ -14,4 +23,6 @@ public sealed class IdleState : BaseState
         }
         player.ChangeState(player.SprintHeld ? new SprintState(player) : new WalkState(player));
     }
+
+    public override void ExitState() { }
 }

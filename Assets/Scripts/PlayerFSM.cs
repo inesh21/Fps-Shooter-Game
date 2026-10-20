@@ -15,6 +15,8 @@ public sealed class PlayerFSM : MonoBehaviour
 
     [Header("References")]
     [SerializeField] private CharacterController controller;
+    [SerializeField] private Animator animator;
+    [SerializeField] private WeaponManager weaponManager;
 
     private BaseState state;
     private Vector3 verticalVelocity;
@@ -26,6 +28,8 @@ public sealed class PlayerFSM : MonoBehaviour
 
     public PlayerInput Actions { get; private set; }
     public CharacterController Controller => controller;
+    public Animator Animator => animator;
+    public WeaponManager WeaponManager => weaponManager;
     public bool IsGrounded => grounded;
     public float VerticalVelocity => verticalVelocity.y;
     public Vector3 CurrentVelocity => horizontalVelocity + verticalVelocity;

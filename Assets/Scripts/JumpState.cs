@@ -4,7 +4,15 @@ public sealed class JumpState : BaseState
 {
     public JumpState(PlayerFSM player) : base(player) { }
 
-    public override void EnterState() => player.StartJump();
+    public override void EnterState()
+    {
+        player.StartJump();
+        if (player.Animator != null)
+        {
+            player.Animator.SetBool("IsGrounded", false);
+            player.Animator.SetTrigger("Jump");
+        }
+    }
 
     public override void UpdateState()
     {
@@ -15,8 +23,17 @@ public sealed class JumpState : BaseState
 
         // Wait until the controller has landed and the upward arc has ended.
         if (!player.IsGrounded || player.VerticalVelocity > 0f) return;
+
+        // Update animator when landing
+        if (player.Animator != null)
+        {
+            player.Animator.SetBool("IsGrounded", true);
+        }
+
         if (!moving) player.ChangeState(new IdleState(player));
         else if (sprinting) player.ChangeState(new SprintState(player));
         else player.ChangeState(new WalkState(player));
     }
+
+    public override void ExitState() { }
 }
