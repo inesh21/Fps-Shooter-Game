@@ -135,6 +135,12 @@ public sealed class PlayerFSM : MonoBehaviour
         horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, desired,
             Mathf.Max(0f, acceleration) * Time.deltaTime);
         controller.Move(horizontalVelocity * Time.deltaTime);
+        Vector3 before = transform.position;
+        controller.Move(horizontalVelocity * Time.deltaTime);
+        Debug.Log(
+        $"Before: {before} | After: {transform.position} | " +
+        $"Collisions: {controller.collisionFlags}"
+            );
     }
 
     // Unity PlayerInput with Behavior=Send Messages invokes OnJump(InputValue).
@@ -162,5 +168,12 @@ public sealed class PlayerFSM : MonoBehaviour
             return true;
         }
         return false;
+    }
+    private void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        Debug.Log(
+            $"CONTROLLER HIT: {hit.collider.name} | " +
+            $"Point: {hit.point}"
+        );
     }
 }
