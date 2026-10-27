@@ -16,6 +16,10 @@ public sealed class WalkState : BaseState
     public override void UpdateState()
     {
         Vector2 input = player.ReadMoveInput();
+
+        // Feed strafe input into GameFeel for camera tilt while walking
+        if (GameFeel.Instance != null) GameFeel.Instance.StrafeInput = input.x;
+
         if (input.sqrMagnitude <= 0.01f)
         {
             player.ChangeState(new IdleState(player));

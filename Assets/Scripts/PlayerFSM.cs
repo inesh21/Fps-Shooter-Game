@@ -1,8 +1,9 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Netcode;
 
 [RequireComponent(typeof(CharacterController))]
-public sealed class PlayerFSM : MonoBehaviour
+public sealed class PlayerFSM : NetworkBehaviour
 {
     [Header("Movement")]
     [Min(0f)] public float walkSpeed = 6f;
@@ -33,6 +34,17 @@ public sealed class PlayerFSM : MonoBehaviour
     public bool IsGrounded => grounded;
     public float VerticalVelocity => verticalVelocity.y;
     public Vector3 CurrentVelocity => horizontalVelocity + verticalVelocity;
+
+    [SerializeField] private Camera playerCamera;
+    [SerializeField] private AudioListener audioListener;
+
+    public override void OnNetworkSpawn()
+    {
+        base.OnNetworkSpawn();
+
+        // If spawned over network, only the owner should control camera, audio, and inputs
+        ConfigureOwnerAuthority(IsOwner);
+    }
 
     private void Awake()
     {
@@ -66,16 +78,56 @@ public sealed class PlayerFSM : MonoBehaviour
         Actions.Player.Disable();
     }
 
-    private void OnDestroy() => Actions?.Dispose();
+    public override void OnDestroy()
+    {
+        base.OnDestroy();
+        Actions?.Dispose();
+    }
 
     private void Start()
     {
         if (controller == null) return;
+
+        // Auto-configure singleplayer / offline fallback if not networked or spawned yet
+        if (!IsSpawned)
+        {
+            ConfigureOwnerAuthority(true);
+        }
+
         ChangeState(new IdleState(this));
+    }
+
+    private void ConfigureOwnerAuthority(bool isLocalOwner)
+    {
+        if (playerCamera == null)
+            playerCamera = GetComponentInChildren<Camera>(true);
+
+        if (audioListener == null && playerCamera != null)
+            audioListener = playerCamera.GetComponent<AudioListener>();
+
+        if (playerCamera != null) playerCamera.enabled = isLocalOwner;
+        if (audioListener != null) audioListener.enabled = isLocalOwner;
+
+        var cameraFollow = GetComponentInChildren<CameraFollow>(true);
+        if (cameraFollow != null) cameraFollow.enabled = isLocalOwner;
+
+        var weaponSway = GetComponentInChildren<WeaponSwayAndBob>(true);
+        if (weaponSway != null) weaponSway.enabled = isLocalOwner;
+
+        var weaponAntiClip = GetComponentInChildren<WeaponAntiClip>(true);
+        if (weaponAntiClip != null) weaponAntiClip.enabled = isLocalOwner;
+
+        if (!isLocalOwner)
+        {
+            if (Actions != null) Actions.Player.Disable();
+            if (controller != null) controller.enabled = false;
+        }
     }
 
     private void Update()
     {
+        // Allow movement in single-player (IsSpawned == false) or when we are the network owner
+        if (IsSpawned && !IsOwner) return;
         if (controller == null || !controller.enabled) return;
 
         // Supports the generated action map and Unity PlayerInput's Send
@@ -126,7 +178,7 @@ public sealed class PlayerFSM : MonoBehaviour
 
     public void MoveHorizontally(Vector2 input, float speed)
     {
-        Transform view = Camera.main != null ? Camera.main.transform : transform;
+        Transform view = (playerCamera != null && playerCamera.enabled) ? playerCamera.transform : (Camera.main != null ? Camera.main.transform : transform);
         Vector3 forward = Vector3.ProjectOnPlane(view.forward, Vector3.up).normalized;
         Vector3 right = Vector3.ProjectOnPlane(view.right, Vector3.up).normalized;
         Vector3 direction = forward * input.y + right * input.x;
@@ -135,12 +187,6 @@ public sealed class PlayerFSM : MonoBehaviour
         horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, desired,
             Mathf.Max(0f, acceleration) * Time.deltaTime);
         controller.Move(horizontalVelocity * Time.deltaTime);
-        Vector3 before = transform.position;
-        controller.Move(horizontalVelocity * Time.deltaTime);
-        Debug.Log(
-        $"Before: {before} | After: {transform.position} | " +
-        $"Collisions: {controller.collisionFlags}"
-            );
     }
 
     // Unity PlayerInput with Behavior=Send Messages invokes OnJump(InputValue).
@@ -169,11 +215,5 @@ public sealed class PlayerFSM : MonoBehaviour
         }
         return false;
     }
-    private void OnControllerColliderHit(ControllerColliderHit hit)
-    {
-        Debug.Log(
-            $"CONTROLLER HIT: {hit.collider.name} | " +
-            $"Point: {hit.point}"
-        );
-    }
+    
 }

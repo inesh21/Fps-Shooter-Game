@@ -63,8 +63,17 @@ public class ImpactEffectManager : MonoBehaviour
         public SurfaceType surfaceType;
     }
 
+    public static ImpactEffectManager Instance { get; private set; }
+
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+
         // Create audio source for impact sounds
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
@@ -79,6 +88,11 @@ public class ImpactEffectManager : MonoBehaviour
 
         // Build dictionaries for fast lookup
         BuildDictionaries();
+    }
+
+    public void SpawnImpactEffect(Vector3 position, Vector3 normal, SurfaceType surfaceType)
+    {
+        CreateImpact(position, normal, surfaceType, null);
     }
 
     private void BuildDictionaries()
@@ -238,16 +252,4 @@ public class ImpactEffectManager : MonoBehaviour
 
     // Public API
     public void SetMaxDecals(int max) => maxDecals = max;
-
-    // Singleton pattern for easy access
-    private static ImpactEffectManager instance;
-    public static ImpactEffectManager Instance
-    {
-        get
-        {
-            if (instance == null)
-                instance = FindObjectOfType<ImpactEffectManager>();
-            return instance;
-        }
-    }
 }

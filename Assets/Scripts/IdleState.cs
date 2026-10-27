@@ -11,6 +11,12 @@ public sealed class IdleState : BaseState
             player.Animator.SetFloat("Speed", 0f);
             player.Animator.SetBool("IsGrounded", true);
         }
+        // Clear tilt when coming to rest
+        if (GameFeel.Instance != null)
+        {
+            GameFeel.Instance.StrafeInput  = 0f;
+            GameFeel.Instance.IsSprinting  = false;
+        }
     }
 
     public override void UpdateState()
