@@ -89,26 +89,60 @@ public class Health : NetworkBehaviour
             // Update scores on the server
             UpdateScoresServer(attackerId);
 
+            // Hook into Conversion Mode: process conversion and dynamic bounty before respawn
+            if (ConversionMatchManager.Instance != null)
+            {
+                var victimScore = GetComponent<PlayerScore>();
+                PlayerScore killerScore = null;
+
+                if (attackerId != OwnerClientId && NetworkManager.Singleton != null)
+                {
+                    if (NetworkManager.Singleton.ConnectedClients.TryGetValue(attackerId, out var client) && client.PlayerObject != null)
+                    {
+                        killerScore = client.PlayerObject.GetComponent<PlayerScore>();
+                    }
+                }
+
+                if (killerScore != null && victimScore != null)
+                {
+                    ConversionMatchManager.Instance.ProcessConversion(killerScore, victimScore);
+                }
+            }
+
             OnDied?.Invoke(attackerId, headshot);
             DieClientRpc();
             StartCoroutine(RespawnRoutine());
         }
     }
 
+    
     private void ApplyDamageOffline(float damage, ulong attackerId, bool headshot)
     {
-        float afterDamage = Mathf.Max(0f, CurrentHp.Value - damage);
+        float oldHp = CurrentHp.Value;
+        float afterDamage = Mathf.Max(0f, oldHp - damage);
+
         CurrentHp.Value = afterDamage;
-        HandleHpChanged(CurrentHp.Value + damage, afterDamage);
+        HandleHpChanged(oldHp, afterDamage);
 
         if (afterDamage <= 0f)
         {
+            OnDied?.Invoke(attackerId, headshot);
+
             if (KillFeed.Instance != null)
                 KillFeed.Instance.ReportKillOffline(attackerId, 0, headshot);
 
+            // Prevent movement during the death period.
+            if (controller != null)
+                controller.enabled = false;
+
+            if (playerFSM != null)
+                playerFSM.enabled = false;
+
+            SetVisualsActive(false);
             StartCoroutine(RespawnRoutineOffline());
         }
     }
+
 
     private void UpdateScoresServer(ulong attackerId)
     {
@@ -155,14 +189,50 @@ public class Health : NetworkBehaviour
         RespawnClientRpc(spawnPos, spawnRot);
     }
 
+    
     private IEnumerator RespawnRoutineOffline()
     {
         yield return new WaitForSeconds(respawnTime);
+
+        // Prefer a registered arena spawn point.
+        var sp = SpawnPoints.Random();
+        Vector3 spawnPos = sp != null
+            ? sp.position
+            : Vector3.up * 2f;
+
+        Quaternion spawnRot = sp != null
+            ? sp.rotation
+            : Quaternion.identity;
+
+        // Move while the CharacterController is disabled.
+        transform.SetPositionAndRotation(spawnPos, spawnRot);
+
         CurrentHp.Value = maxHp;
         HandleHpChanged(0f, maxHp);
-        transform.position = Vector3.up * 2f;
-        if (controller != null) controller.enabled = true;
-        if (playerFSM != null) playerFSM.enabled = true;
+
+        SetVisualsActive(true);
+
+        if (controller != null)
+            controller.enabled = true;
+
+        if (playerFSM != null)
+            playerFSM.enabled = true;
+    }
+
+
+    public void ResetForNewRound()
+    {
+        if (!IsServer) return;
+
+        StopAllCoroutines();
+        CurrentHp.Value = maxHp;
+        HandleHpChanged(0f, maxHp);
+
+        var sp = SpawnPoints.Random();
+        Vector3 spawnPos = sp != null ? sp.position : Vector3.up * 2f;
+        Quaternion spawnRot = sp != null ? sp.rotation : Quaternion.identity;
+
+        RespawnClientRpc(spawnPos, spawnRot);
     }
 
     [ClientRpc]

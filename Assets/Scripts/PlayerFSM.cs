@@ -97,32 +97,30 @@ public sealed class PlayerFSM : NetworkBehaviour
         ChangeState(new IdleState(this));
     }
 
+    
     private void ConfigureOwnerAuthority(bool isLocalOwner)
     {
-        if (playerCamera == null)
-            playerCamera = GetComponentInChildren<Camera>(true);
-
-        if (audioListener == null && playerCamera != null)
-            audioListener = playerCamera.GetComponent<AudioListener>();
-
-        if (playerCamera != null) playerCamera.enabled = isLocalOwner;
-        if (audioListener != null) audioListener.enabled = isLocalOwner;
-
-        var cameraFollow = GetComponentInChildren<CameraFollow>(true);
-        if (cameraFollow != null) cameraFollow.enabled = isLocalOwner;
-
-        var weaponSway = GetComponentInChildren<WeaponSwayAndBob>(true);
-        if (weaponSway != null) weaponSway.enabled = isLocalOwner;
-
-        var weaponAntiClip = GetComponentInChildren<WeaponAntiClip>(true);
-        if (weaponAntiClip != null) weaponAntiClip.enabled = isLocalOwner;
+        // NetworkPlayerSetup handles camera, audio, and camera-related behaviours.
+        // PlayerFSM only handles movement ownership.
 
         if (!isLocalOwner)
         {
-            if (Actions != null) Actions.Player.Disable();
-            if (controller != null) controller.enabled = false;
+            if (Actions != null)
+                Actions.Player.Disable();
+
+            if (controller != null)
+                controller.enabled = false;
+        }
+        else
+        {
+            if (controller != null)
+                controller.enabled = true;
+
+            if (Actions != null)
+                Actions.Player.Enable();
         }
     }
+
 
     private void Update()
     {

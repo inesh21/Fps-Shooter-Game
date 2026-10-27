@@ -1,43 +1,84 @@
+
 using Unity.Netcode;
 using UnityEngine;
 
-/// <summary>
-/// Tracks per-player kills and deaths as NetworkVariables.
-/// Attach to the player prefab root (same object as Health / NetworkObject).
-/// Read from the Scoreboard UI via PlayerScore.OnStatsChanged.
-/// </summary>
 public class PlayerScore : NetworkBehaviour
 {
     public NetworkVariable<int> Kills = new NetworkVariable<int>(
-        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
 
     public NetworkVariable<int> Deaths = new NetworkVariable<int>(
-        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
 
-    // Simple offline counters (used when IsSpawned == false)
+    // Conversion Mode additions: persistent individual score & team assignment (0 = Team A, 1 = Team B)
+    public NetworkVariable<int> TeamId = new NetworkVariable<int>(
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
+    public NetworkVariable<int> Score = new NetworkVariable<int>(
+        0,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
     private int offlineKills;
     private int offlineDeaths;
+    private int offlineScore;
+    private int offlineTeamId;
 
     public delegate void StatsChangedDelegate(int kills, int deaths);
     public event StatsChangedDelegate OnStatsChanged;
 
+    public delegate void ConversionScoreChangedDelegate(int score, int teamId);
+    public event ConversionScoreChangedDelegate OnConversionStatsChanged;
+
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
-        Kills.OnValueChanged += (_, __) => OnStatsChanged?.Invoke(Kills.Value, Deaths.Value);
-        Deaths.OnValueChanged += (_, __) => OnStatsChanged?.Invoke(Kills.Value, Deaths.Value);
+
+        Kills.OnValueChanged += HandleStatsChanged;
+        Deaths.OnValueChanged += HandleStatsChanged;
+        TeamId.OnValueChanged += HandleConversionStatsChanged;
+        Score.OnValueChanged += HandleConversionStatsChanged;
+
+        HandleStatsChanged(0, 0);
+        HandleConversionStatsChanged(0, 0);
+
+        if (IsServer && ConversionMatchManager.Instance != null)
+        {
+            ConversionMatchManager.Instance.Register(this);
+        }
     }
 
     public override void OnNetworkDespawn()
     {
+        if (IsServer && ConversionMatchManager.Instance != null)
+        {
+            ConversionMatchManager.Instance.Unregister(this);
+        }
+
+        Kills.OnValueChanged -= HandleStatsChanged;
+        Deaths.OnValueChanged -= HandleStatsChanged;
+        TeamId.OnValueChanged -= HandleConversionStatsChanged;
+        Score.OnValueChanged -= HandleConversionStatsChanged;
+
         base.OnNetworkDespawn();
-        Kills.OnValueChanged -= (_, __) => OnStatsChanged?.Invoke(Kills.Value, Deaths.Value);
-        Deaths.OnValueChanged -= (_, __) => OnStatsChanged?.Invoke(Kills.Value, Deaths.Value);
     }
 
-    // ---- Server-side methods called by Health / KillFeed ----
+    private void HandleStatsChanged(int oldValue, int newValue)
+    {
+        OnStatsChanged?.Invoke(Kills.Value, Deaths.Value);
+    }
 
-    /// <summary>Add a kill. Must be called on the server.</summary>
+    private void HandleConversionStatsChanged(int oldValue, int newValue)
+    {
+        OnConversionStatsChanged?.Invoke(Score.Value, TeamId.Value);
+    }
+
     public void AddKill()
     {
         if (IsSpawned && IsServer)
@@ -51,7 +92,6 @@ public class PlayerScore : NetworkBehaviour
         }
     }
 
-    /// <summary>Add a death. Must be called on the server.</summary>
     public void AddDeath()
     {
         if (IsSpawned && IsServer)
@@ -65,6 +105,34 @@ public class PlayerScore : NetworkBehaviour
         }
     }
 
+    public void AddScore(int points)
+    {
+        if (IsSpawned && IsServer)
+        {
+            Score.Value += points;
+        }
+        else if (!IsSpawned)
+        {
+            offlineScore += points;
+            OnConversionStatsChanged?.Invoke(offlineScore, offlineTeamId);
+        }
+    }
+
+    public void SetTeam(int team)
+    {
+        if (IsSpawned && IsServer)
+        {
+            TeamId.Value = team;
+        }
+        else if (!IsSpawned)
+        {
+            offlineTeamId = team;
+            OnConversionStatsChanged?.Invoke(offlineScore, offlineTeamId);
+        }
+    }
+
     public int GetKills() => IsSpawned ? Kills.Value : offlineKills;
     public int GetDeaths() => IsSpawned ? Deaths.Value : offlineDeaths;
+    public int GetScore() => IsSpawned ? Score.Value : offlineScore;
+    public int GetTeamId() => IsSpawned ? TeamId.Value : offlineTeamId;
 }

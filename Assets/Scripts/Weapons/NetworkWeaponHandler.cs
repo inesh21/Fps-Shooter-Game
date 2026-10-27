@@ -280,19 +280,30 @@ public sealed class NetworkWeaponHandler : NetworkBehaviour
         bool isServerHit = Physics.Raycast(origin, dir, out RaycastHit hit, currentWeapon.range, currentWeapon.hitLayers);
         if (isServerHit)
         {
+            var myScore = GetComponent<PlayerScore>();
+            var match = ConversionMatchManager.Instance;
+
             if (hit.collider.GetComponentInParent<Health>() is Health targetHealth && targetHealth.OwnerClientId != OwnerClientId)
             {
-                bool isHead = hit.collider.CompareTag("Head");
-                float distRatio = Mathf.Clamp01(hit.distance / currentWeapon.range);
-                float damage = currentWeapon.damage * currentWeapon.damageFalloff.Evaluate(distRatio) * (isHead ? currentWeapon.headshotMultiplier : 1f);
+                var targetScore = targetHealth.GetComponent<PlayerScore>();
+                // Friendly Fire Gate: players on the same team do not damage each other!
+                bool isSameTeam = myScore != null && targetScore != null && myScore.TeamId.Value == targetScore.TeamId.Value;
+                bool isMatchActive = match == null || match.IsMatchActive.Value;
 
-                targetHealth.TakeDamage(damage, OwnerClientId, isHead);
-
-                // Confirm hit only to the owner
-                HitConfirmClientRpc(isHead, new ClientRpcParams
+                if (!isSameTeam && isMatchActive)
                 {
-                    Send = new ClientRpcSendParams { TargetClientIds = new[] { OwnerClientId } }
-                });
+                    bool isHead = hit.collider.CompareTag("Head");
+                    float distRatio = Mathf.Clamp01(hit.distance / currentWeapon.range);
+                    float damage = currentWeapon.damage * currentWeapon.damageFalloff.Evaluate(distRatio) * (isHead ? currentWeapon.headshotMultiplier : 1f);
+
+                    targetHealth.TakeDamage(damage, OwnerClientId, isHead);
+
+                    // Confirm hit only to the owner
+                    HitConfirmClientRpc(isHead, new ClientRpcParams
+                    {
+                        Send = new ClientRpcSendParams { TargetClientIds = new[] { OwnerClientId } }
+                    });
+                }
             }
 
             SurfaceType sKind = SurfaceType.Default;

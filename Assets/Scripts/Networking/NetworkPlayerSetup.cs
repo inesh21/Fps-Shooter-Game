@@ -33,6 +33,22 @@ public class NetworkPlayerSetup : NetworkBehaviour
             playerCamera = GetComponentInChildren<Camera>(true);
         if (audioListener == null && playerCamera != null)
             audioListener = playerCamera.GetComponent<AudioListener>();
+
+        // IMPORTANT: Immediately disable AudioListener and Camera on Awake until network ownership is verified.
+        // This completely eliminates the "There are 2 audio listeners in the scene" warning when player prefabs instantiate.
+        if (audioListener != null)
+            audioListener.enabled = false;
+        if (playerCamera != null)
+            playerCamera.enabled = false;
+    }
+
+    private void Start()
+    {
+        // Single-player / offline fallback: if spawned outside NGO, enable local camera & listener
+        if (!IsSpawned)
+        {
+            ApplyOwnership(true);
+        }
     }
 
     public override void OnNetworkSpawn()
